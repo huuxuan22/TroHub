@@ -8,6 +8,7 @@ import RoomDetailPage from './pages/RoomDetailPage';
 import PostRoomPage from './pages/PostRoomPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ManageRoomsPage from './pages/ManageRoomsPage';
 import './index.css';
 
 function NotFoundPage() {
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/room/:id" element={<RoomDetailPage />} />
             <Route path="/post" element={<PostRoomPage />} />
+            <Route path="/manage-rooms" element={<ManageRoomsPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="*" element={<NotFoundPage />} />

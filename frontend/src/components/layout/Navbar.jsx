@@ -5,6 +5,7 @@ const NAV_LINKS = [
   { label: 'Trang chủ', path: '/' },
   { label: 'Tìm phòng', path: '/search' },
   { label: 'Đăng tin', path: '/post' },
+  { label: 'Quản lý phòng', path: '/manage-rooms' },
   { label: 'Tin tức', path: '/news' },
 ];
 
