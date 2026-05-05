@@ -1,0 +1,1 @@
+"""TroHub backend application package."""

@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from database.base import Base
 
-
 class CrawlHistory(Base):
     __tablename__ = "crawl_history"
 

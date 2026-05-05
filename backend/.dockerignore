@@ -1,0 +1,35 @@
+# Git & IDE
+.git
+.gitignore
+.idea
+.vscode
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.eggs
+venv
+.venv
+env
+
+# Env & secrets (mount or inject at runtime)
+.env
+.env.*
+
+# Tests / coverage
+htmlcov
+.coverage
+.tox
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs / misc
+*.md
+!README.md

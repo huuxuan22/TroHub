@@ -1,0 +1,10 @@
+# TroHub backend (FastAPI) — mẫu cho đồ án / local Docker
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-dotenv>=1.0
+pydantic>=2
+pydantic-settings>=2
+
+# Bỏ comment khi nối MySQL (SQLAlchemy + driver)
+# sqlalchemy>=2.0
+# pymysql>=1.1

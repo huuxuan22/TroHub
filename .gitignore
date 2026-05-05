@@ -1,0 +1,83 @@
+# =============================================================================
+# TroHub — Python (FastAPI / SQLAlchemy / Alembic) + dữ liệu crawl
+# Mục tiêu: git add . chỉ còn source, requirements, README, migration, .env.example
+# Lưu ý: pattern không chứa "/" chỉ khớp đúng một segment; dùng **/ để khớp mọi cấp thư mục.
+# Comment phải ở dòng riêng — không ghi # sau pattern trên cùng một dòng.
+# =============================================================================
+
+# ----- Bytecode & interpreter -----
+# Thư mục bytecode Python (*.pyc) — không phải source
+__pycache__/
+# File .pyc / .pyo / .pyd rải rác
+*.py[cod]
+# Bytecode Jython
+*$py.class
+# Marker virtualenv cũ
+.Python
+
+# ----- Virtual environment -----
+# Thư mục venv ở mọi nơi trong repo (vd: crawler/.venv)
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+**/.virtualenv/
+
+# ----- Secrets & môi trường local -----
+# File .env thật ở bất kỳ đâu — chứa secret
+**/.env
+# Biến thể .env.* (local, production, …)
+**/.env.*
+# Giữ file mẫu an toàn cho git
+!**/.env.example
+!**/.env.*.example
+
+# ----- IDE / editor -----
+.idea/
+*.swp
+*.swo
+.project
+.pydevproject
+
+# ----- Node (monorepo / công cụ JS) -----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ----- Log runtime -----
+logs/
+*.log
+
+# ----- Crawl tạm & dữ liệu raw -----
+crawler/tmp/
+crawler/temp/
+crawler/data/raw/
+crawler/storage/
+crawler/downloads/
+*.crawl.tmp
+*.html.dump
+
+# ----- Build / packaging / cache công cụ -----
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# ----- SQLite / DB file local (dev) -----
+*.db
+*.sqlite
+*.sqlite3
+
+# ----- OS -----
+.DS_Store
+Thumbs.db
+Desktop.ini
