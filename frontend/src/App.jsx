@@ -1,25 +1,44 @@
-import logo from "./logo.svg";
-import "./App.css";
+import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Navbar from './components/layout/Navbar';
+import Footer from './components/layout/Footer';
+import HomePage from './pages/HomePage';
+import SearchPage from './pages/SearchPage';
+import RoomDetailPage from './pages/RoomDetailPage';
+import PostRoomPage from './pages/PostRoomPage';
+import './index.css';
 
-function App() {
+function NotFoundPage() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.jsx</code> and save to reload (Vite).
-        </p>
-        <a
-          className="App-link"
-          href="https://react.dev"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
+    <div className="min-h-screen flex items-center justify-center pt-16 bg-slate-50">
+      <div className="text-center">
+        <div className="text-8xl mb-6">🏠</div>
+        <h1 className="text-4xl font-bold text-gray-900 mb-3">404</h1>
+        <p className="text-gray-500 mb-6">Trang bạn tìm không tồn tại</p>
+        <a href="/" className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-blue-700 transition-colors">
+          ← Về trang chủ
         </a>
-      </header>
+      </div>
     </div>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <BrowserRouter>
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <div className="flex-1">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/room/:id" element={<RoomDetailPage />} />
+            <Route path="/post" element={<PostRoomPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </div>
+        <Footer />
+      </div>
+    </BrowserRouter>
+  );
+}
