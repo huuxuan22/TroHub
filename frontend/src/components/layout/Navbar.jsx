@@ -6,6 +6,7 @@ const NAV_LINKS = [
   { label: 'Tìm phòng', path: '/search' },
   { label: 'Đăng tin', path: '/post' },
   { label: 'Tin tức', path: '/news' },
+  { label: 'Liên hệ', path: '/contact' },
 ];
 
 export default function Navbar() {
