@@ -1,0 +1,12 @@
+"""FastAPI dependencies."""
+
+from collections.abc import Generator
+
+from sqlalchemy.orm import Session
+
+from database.session import get_db as _get_db
+
+
+def get_db() -> Generator[Session, None, None]:
+    """Re-export database session dependency for routers."""
+    yield from _get_db()
