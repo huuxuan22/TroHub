@@ -8,6 +8,8 @@ import RoomDetailPage from './pages/RoomDetailPage';
 import PostRoomPage from './pages/PostRoomPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ContactPage from './pages/ContactPage';
+import NewsPage from './pages/NewsPage';
 import './index.css';
 
 function NotFoundPage() {
@@ -38,6 +40,8 @@ export default function App() {
             <Route path="/post" element={<PostRoomPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/news" element={<NewsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </div>
