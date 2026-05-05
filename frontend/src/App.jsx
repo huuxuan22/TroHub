@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
+import ChatWidget from './components/common/ChatWidget';
 import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
 import RoomDetailPage from './pages/RoomDetailPage';
@@ -46,6 +47,7 @@ export default function App() {
           </Routes>
         </div>
         <Footer />
+        <ChatWidget />
       </div>
     </BrowserRouter>
   );
