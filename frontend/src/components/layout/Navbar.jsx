@@ -72,7 +72,10 @@ export default function Navbar() {
               Đăng tin
             </button>
 
-            <button className="hidden md:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-2">
+            <button
+              onClick={() => navigate('/login')}
+              className="hidden md:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-2"
+            >
               <span>👤</span>
               <span className="hidden lg:inline">Đăng nhập</span>
             </button>
@@ -112,7 +115,10 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="pt-2 border-t border-gray-100 flex gap-2">
-            <button className="flex-1 text-center text-sm text-gray-600 border border-gray-200 py-2.5 rounded-lg">
+            <button
+              onClick={() => navigate('/login')}
+              className="flex-1 text-center text-sm text-gray-600 border border-gray-200 py-2.5 rounded-lg"
+            >
               Đăng nhập
             </button>
             <button
