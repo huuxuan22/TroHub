@@ -1,0 +1,5 @@
+# TroHub chats (FastAPI + WebSocket)
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-dotenv>=1.0
+websockets>=12
