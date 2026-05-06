@@ -9,9 +9,7 @@ import RoomDetailPage from './pages/RoomDetailPage';
 import PostRoomPage from './pages/PostRoomPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-<<<<<<< HEAD
 import ManageRoomsPage from './pages/ManageRoomsPage';
-=======
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import AboutPage from './pages/AboutPage';
 import TermsPage from './pages/TermsPage';
@@ -22,7 +20,6 @@ import LandlordSupportPage from './pages/LandlordSupportPage';
 import GuidePage from './pages/GuidePage';
 import ContactPage from './pages/ContactPage';
 import NewsPage from './pages/NewsPage';
->>>>>>> main
 import './index.css';
 
 function NotFoundPage() {
