@@ -13,6 +13,10 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import AboutPage from './pages/AboutPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
+import ManagePostsPage from './pages/ManagePostsPage';
+import PricingPage from './pages/PricingPage';
+import LandlordSupportPage from './pages/LandlordSupportPage';
+import GuidePage from './pages/GuidePage';
 import ContactPage from './pages/ContactPage';
 import NewsPage from './pages/NewsPage';
 import './index.css';
@@ -49,6 +53,10 @@ export default function App() {
             <Route path="/about" element={<AboutPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/manage" element={<ManagePostsPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/landlord-support" element={<LandlordSupportPage />} />
+            <Route path="/guide" element={<GuidePage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/news" element={<NewsPage />} />
             <Route path="*" element={<NotFoundPage />} />
