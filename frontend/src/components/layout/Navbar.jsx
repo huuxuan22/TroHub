@@ -7,6 +7,7 @@ const NAV_LINKS = [
   { label: 'Đăng tin', path: '/post' },
   { label: 'Quản lý phòng', path: '/manage-rooms' },
   { label: 'Tin tức', path: '/news' },
+  { label: 'Liên hệ', path: '/contact' },
 ];
 
 export default function Navbar() {

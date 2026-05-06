@@ -2,13 +2,27 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
+import ChatWidget from './components/common/ChatWidget';
 import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
 import RoomDetailPage from './pages/RoomDetailPage';
 import PostRoomPage from './pages/PostRoomPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+<<<<<<< HEAD
 import ManageRoomsPage from './pages/ManageRoomsPage';
+=======
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import AboutPage from './pages/AboutPage';
+import TermsPage from './pages/TermsPage';
+import PrivacyPage from './pages/PrivacyPage';
+import ManagePostsPage from './pages/ManagePostsPage';
+import PricingPage from './pages/PricingPage';
+import LandlordSupportPage from './pages/LandlordSupportPage';
+import GuidePage from './pages/GuidePage';
+import ContactPage from './pages/ContactPage';
+import NewsPage from './pages/NewsPage';
+>>>>>>> main
 import './index.css';
 
 function NotFoundPage() {
@@ -40,10 +54,21 @@ export default function App() {
             <Route path="/manage-rooms" element={<ManageRoomsPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/manage" element={<ManagePostsPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/landlord-support" element={<LandlordSupportPage />} />
+            <Route path="/guide" element={<GuidePage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/news" element={<NewsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </div>
         <Footer />
+        <ChatWidget />
       </div>
     </BrowserRouter>
   );
