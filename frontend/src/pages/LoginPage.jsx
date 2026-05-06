@@ -55,7 +55,9 @@ export default function LoginPage() {
                 />
                 Ghi nhớ đăng nhập
               </label>
-              <a href="#" className="text-blue-600 hover:underline">Quên mật khẩu?</a>
+              <Link to="/forgot-password" className="text-blue-600 hover:underline">
+                Quên mật khẩu?
+              </Link>
             </div>
 
             <button
