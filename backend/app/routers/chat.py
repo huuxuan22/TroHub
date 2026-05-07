@@ -1,0 +1,67 @@
+import json
+from datetime import datetime
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+
+from app.database import SessionLocal
+from app.models import Message
+from app.services.chat_realtime import connection_manager
+
+router = APIRouter(tags=["chat"])
+
+
+@router.websocket("/trohub/ws/chat/{room_id}")
+async def chat_websocket(websocket: WebSocket, room_id: int):
+    sender_id_raw = websocket.query_params.get("sender_id")
+    if not sender_id_raw or not sender_id_raw.isdigit():
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="sender_id is required")
+        return
+
+    sender_id = int(sender_id_raw)
+    await connection_manager.connect(room_id=room_id, websocket=websocket)
+
+    try:
+        while True:
+            raw_message = await websocket.receive_text()
+            try:
+                payload = json.loads(raw_message)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "message": "Invalid JSON payload"})
+                continue
+
+            receiver_id = payload.get("receiver_id")
+            content = payload.get("content")
+
+            if not isinstance(receiver_id, int) or not isinstance(content, str) or not content.strip():
+                await websocket.send_json({"type": "error", "message": "receiver_id(int) and content(non-empty string) are required"})
+                continue
+
+            db = SessionLocal()
+            try:
+                db_message = Message(
+                    sender_id=sender_id,
+                    receiver_id=receiver_id,
+                    room_id=room_id,
+                    content=content.strip(),
+                    is_read=False,
+                )
+                db.add(db_message)
+                db.commit()
+                db.refresh(db_message)
+            finally:
+                db.close()
+
+            await connection_manager.broadcast(
+                room_id=room_id,
+                message={
+                    "type": "message",
+                    "id": db_message.id,
+                    "room_id": room_id,
+                    "sender_id": sender_id,
+                    "receiver_id": receiver_id,
+                    "content": db_message.content,
+                    "sent_at": db_message.sent_at.isoformat() if isinstance(db_message.sent_at, datetime) else None,
+                },
+            )
+    except WebSocketDisconnect:
+        connection_manager.disconnect(room_id=room_id, websocket=websocket)
