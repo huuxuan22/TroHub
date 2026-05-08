@@ -79,6 +79,7 @@ class Room(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255))
+    room_type: Mapped[str] = mapped_column(String(100), default="Phòng trọ")
     description: Mapped[str | None] = mapped_column(Text)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))

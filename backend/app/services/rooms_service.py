@@ -22,6 +22,7 @@ def list_rooms(
     min_price: float | None = None,
     max_price: float | None = None,
     status: str | None = None,
+    room_type: str | None = None,
     landlord_id: int | None = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
@@ -44,6 +45,8 @@ def list_rooms(
         query = query.filter(Room.price <= max_price)
     if status:
         query = query.filter(Room.status == status)
+    if room_type:
+        query = query.filter(Room.room_type == room_type)
     if landlord_id is not None:
         query = query.filter(Room.landlord_id == landlord_id)
 

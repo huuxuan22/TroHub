@@ -13,6 +13,8 @@ const STATUS_OPTIONS = [
   { value: 'maintenance', label: 'Bảo trì' },
 ];
 
+const ROOM_TYPE_OPTIONS = ['Phòng trọ', 'Căn hộ mini', 'Nhà nguyên căn', 'Căn hộ chung cư', 'Phòng ở ghép'];
+
 function toStatusLabel(status) {
   return STATUS_OPTIONS.find((s) => s.value === status)?.label || 'Còn phòng';
 }
@@ -33,6 +35,7 @@ function normalizeRoom(room) {
     title: room.title,
     address: room.address,
     city: room.city,
+    type: room.type || 'Phòng trọ',
     price: room.price,
     area: room.area,
     status: room.status || 'available',
@@ -43,6 +46,7 @@ function normalizeRoom(room) {
 function emptyForm() {
   return {
     title: '',
+    type: 'Phòng trọ',
     address: '',
     city: '',
     price: '',
@@ -91,6 +95,7 @@ export default function ManageRoomsPage() {
     setEditingId(room.id);
     setForm({
       title: room.title,
+      type: room.type || 'Phòng trọ',
       address: room.address,
       city: room.city,
       price: String(room.price),
@@ -149,6 +154,7 @@ export default function ManageRoomsPage() {
                         </div>
                         <p className="text-sm text-slate-500 mb-2">{room.address}, {room.city}</p>
                         <div className="flex flex-wrap gap-4 text-sm text-slate-600">
+                          <span>Loại hình: <strong>{room.type || 'Phòng trọ'}</strong></span>
                           <span>Diện tích: <strong>{room.area} m²</strong></span>
                           <span>Giá: <strong>{formatPrice(room.price)} đ/tháng</strong></span>
                         </div>
@@ -198,6 +204,18 @@ export default function ManageRoomsPage() {
                   className={inputCls}
                   placeholder="https://..."
                 />
+              </Field>
+
+              <Field label="Loại hình">
+                <select
+                  value={form.type}
+                  onChange={(e) => update('type', e.target.value)}
+                  className={inputCls}
+                >
+                  {ROOM_TYPE_OPTIONS.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
               </Field>
 
               <Field label="Địa chỉ">
