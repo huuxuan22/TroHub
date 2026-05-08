@@ -95,6 +95,7 @@ class LandlordProfileOut(LandlordProfileBase):
 
 class RoomBase(BaseModel):
     title: str
+    room_type: str = "Phòng trọ"
     description: str | None = None
     price: Decimal
     area_sqm: Decimal | None = None
@@ -113,6 +114,7 @@ class RoomCreate(RoomBase):
 
 class RoomUpdate(BaseModel):
     title: str | None = None
+    room_type: str | None = None
     description: str | None = None
     price: Decimal | None = None
     area_sqm: Decimal | None = None
