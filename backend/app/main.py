@@ -4,6 +4,16 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers.amenities import router as amenities_router
+from app.routers.chat import router as chat_router
+from app.routers.favorites import router as favorites_router
+from app.routers.messages import router as messages_router
+from app.routers.notifications import router as notifications_router
+from app.routers.reports import router as reports_router
+from app.routers.rooms import router as rooms_router
+from app.routers.uploads import router as uploads_router
+from app.routers.users import router as users_router
+
 load_dotenv()
 
 _origins = os.getenv(
@@ -26,6 +36,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(rooms_router)
+app.include_router(users_router)
+app.include_router(messages_router)
+app.include_router(amenities_router)
+app.include_router(favorites_router)
+app.include_router(reports_router)
+app.include_router(notifications_router)
+app.include_router(uploads_router)
+app.include_router(chat_router)
 
 
 @app.get("/trohub/health")
