@@ -1,22 +1,10 @@
 import React from 'react';
-import HeroBanner from '../components/home/HeroBanner';
-import CategorySection from '../components/home/CategorySection';
-import FeaturedRooms from '../components/home/FeaturedRooms';
-import HowItWorks from '../components/home/HowItWorks';
-import StatsSection from '../components/home/StatsSection';
-import Testimonials from '../components/home/Testimonials';
-import AIAssistantBanner from '../components/home/AIAssistantBanner';
+import HomeMapExplorer from '../components/home/HomeMapExplorer';
 
 export default function HomePage() {
   return (
-    <main>
-      <HeroBanner />
-      <CategorySection />
-      <FeaturedRooms />
-      <StatsSection />
-      <HowItWorks />
-      <AIAssistantBanner />
-      <Testimonials />
+    <main className="pt-16 h-[calc(100vh-4rem)] overflow-hidden">
+      <HomeMapExplorer />
     </main>
   );
 }

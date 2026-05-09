@@ -1,17 +1,35 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_ROOMS } from '../../data/mockData';
 import RoomCard from '../rooms/RoomCard';
+import { fetchRooms } from '../../services/roomApi';
 
 const TABS = ['Tất cả', 'Phòng trọ', 'Căn hộ mini', 'Nhà nguyên căn', 'Chung cư'];
 
 export default function FeaturedRooms() {
   const [activeTab, setActiveTab] = useState('Tất cả');
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const loadFeaturedRooms = async () => {
+      try {
+        setLoading(true);
+        const data = await fetchRooms({ status: 'available', sort_by: 'created_at', sort_order: 'desc', limit: 12 });
+        setRooms(data);
+      } catch {
+        setRooms([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFeaturedRooms();
+  }, []);
+
   const filtered = activeTab === 'Tất cả'
-    ? MOCK_ROOMS
-    : MOCK_ROOMS.filter((r) => r.type.includes(activeTab.split(' ')[0]));
+    ? rooms
+    : rooms.filter((r) => r.type.includes(activeTab.split(' ')[0]));
 
   return (
     <section className="py-16 bg-slate-50">
@@ -49,6 +67,9 @@ export default function FeaturedRooms() {
 
         {/* Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {loading && [...Array(3)].map((_, idx) => (
+            <div key={idx} className="h-72 bg-white rounded-2xl border border-gray-100 animate-pulse" />
+          ))}
           {filtered.map((room) => (
             <RoomCard key={room.id} room={room} featured={room.isFeatured} />
           ))}
