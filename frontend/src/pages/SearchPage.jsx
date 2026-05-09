@@ -3,51 +3,96 @@ import { useSearchParams } from 'react-router-dom';
 import RoomFilter from '../components/rooms/RoomFilter';
 import RoomList from '../components/rooms/RoomList';
 import AISearchBar from '../components/home/AISearchBar';
-import { MOCK_ROOMS } from '../data/mockData';
+import { fetchRooms } from '../services/roomApi';
+
+const PRICE_RANGES = [
+  { min: 0, max: 1000000 },
+  { min: 1000000, max: 2000000 },
+  { min: 2000000, max: 3000000 },
+  { min: 3000000, max: 5000000 },
+  { min: 5000000, max: 10000000 },
+  { min: 10000000, max: null },
+];
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showFilter, setShowFilter] = useState(false);
+  const [filters, setFilters] = useState({
+    type: '',
+    city: '',
+    priceRange: null,
+    amenities: [],
+    minArea: '',
+    maxArea: '',
+    verified: false,
+    sortBy: 'newest',
+  });
   const query = searchParams.get('q') || '';
   const city = searchParams.get('city') || '';
 
   useEffect(() => {
-    setLoading(true);
-    const timer = setTimeout(() => {
-      let results = [...MOCK_ROOMS];
-      if (city) results = results.filter((r) => r.city.includes(city));
-      setRooms(results);
-      setLoading(false);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [query, city]);
+    const loadRooms = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const range = filters.priceRange !== null && filters.priceRange !== undefined ? PRICE_RANGES[filters.priceRange] : null;
+        const keyword = [query, city, filters.city].filter(Boolean).join(' ').trim();
 
-  const handleFilterChange = (filters) => {
-    let results = [...MOCK_ROOMS];
-    if (filters.city) results = results.filter((r) => r.city === filters.city);
-    if (filters.type) results = results.filter((r) => r.type === filters.type);
-    if (filters.verified) results = results.filter((r) => r.isVerified);
-    if (filters.priceRange !== null && filters.priceRange !== undefined) {
-      const range = [
-        { min: 0, max: 1000000 },
-        { min: 1000000, max: 2000000 },
-        { min: 2000000, max: 3000000 },
-        { min: 3000000, max: 5000000 },
-        { min: 5000000, max: 10000000 },
-        { min: 10000000, max: null },
-      ][filters.priceRange];
-      if (range) results = results.filter((r) => r.price >= range.min && (!range.max || r.price <= range.max));
+        const sortByMap = {
+          newest: { sort_by: 'created_at', sort_order: 'desc' },
+          price_asc: { sort_by: 'price', sort_order: 'asc' },
+          price_desc: { sort_by: 'price', sort_order: 'desc' },
+        };
+        const sortParams = sortByMap[filters.sortBy] || sortByMap.newest;
+
+        let results = await fetchRooms({
+          keyword,
+          min_price: range?.min,
+          max_price: range?.max,
+          ...sortParams,
+          limit: 60,
+        });
+
+        if (filters.type) {
+          results = results.filter((r) => r.type === filters.type);
+        }
+        if (filters.verified) {
+          results = results.filter((r) => r.isVerified);
+        }
+        if (filters.minArea) {
+          results = results.filter((r) => r.area >= Number(filters.minArea));
+        }
+        if (filters.maxArea) {
+          results = results.filter((r) => r.area <= Number(filters.maxArea));
+        }
+        setRooms(results);
+      } catch (err) {
+        setError('Không thể tải dữ liệu từ server. Vui lòng thử lại.');
+        setRooms([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRooms();
+  }, [query, city, filters]);
+
+  const handleFilterChange = (nextFilters) => {
+    setFilters(nextFilters);
+  };
+
+  const renderRoomList = () => {
+    if (error) {
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          {error}
+        </div>
+      );
     }
-    if (filters.amenities?.length) {
-      results = results.filter((r) => filters.amenities.every((a) => r.amenities?.includes(a)));
-    }
-    if (filters.sortBy === 'price_asc') results.sort((a, b) => a.price - b.price);
-    else if (filters.sortBy === 'price_desc') results.sort((a, b) => b.price - a.price);
-    else if (filters.sortBy === 'rating') results.sort((a, b) => b.rating - a.rating);
-    else if (filters.sortBy === 'ai_score') results.sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
-    setRooms(results);
+    return <RoomList rooms={rooms} loading={loading} totalCount={rooms.length} />;
   };
 
   return (
@@ -125,7 +170,7 @@ export default function SearchPage() {
 
           {/* Results */}
           <div className="flex-1 min-w-0">
-            <RoomList rooms={rooms} loading={loading} totalCount={rooms.length} />
+            {renderRoomList()}
 
             {/* Pagination */}
             {!loading && rooms.length > 0 && (

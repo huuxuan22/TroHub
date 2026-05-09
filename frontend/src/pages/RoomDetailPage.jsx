@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { MOCK_ROOMS, AMENITIES } from '../data/mockData';
+import { AMENITIES } from '../data/mockData';
 import StarRating from '../components/common/StarRating';
 import Badge from '../components/common/Badge';
 import RoomCard from '../components/rooms/RoomCard';
+import { fetchRoomDetail, fetchRooms } from '../services/roomApi';
 
 function formatPrice(price) {
   return price >= 1000000 ? `${(price / 1000000).toFixed(1).replace('.0', '')} triệu` : `${price / 1000}k`;
@@ -17,12 +18,36 @@ export default function RoomDetailPage() {
   const [saved, setSaved] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [tab, setTab] = useState('detail');
+  const [relatedRooms, setRelatedRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const found = MOCK_ROOMS.find((r) => r.id === parseInt(id));
-    setRoom(found || null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const loadRoomDetail = async () => {
+      try {
+        setLoading(true);
+        const detail = await fetchRoomDetail(id);
+        setRoom(detail);
+        const list = await fetchRooms({ keyword: detail.city || detail.address, limit: 6 });
+        setRelatedRooms(list.filter((r) => r.id !== detail.id).slice(0, 3));
+      } catch {
+        setRoom(null);
+        setRelatedRooms([]);
+      } finally {
+        setLoading(false);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    loadRoomDetail();
   }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center pt-16">
+        <div className="text-gray-500">Đang tải dữ liệu phòng...</div>
+      </div>
+    );
+  }
 
   if (!room) {
     return (
@@ -41,8 +66,6 @@ export default function RoomDetailPage() {
   const amenityDetails = (room.amenities || [])
     .map((id) => AMENITIES.find((a) => a.id === id))
     .filter(Boolean);
-
-  const relatedRooms = MOCK_ROOMS.filter((r) => r.id !== room.id && r.city === room.city).slice(0, 3);
 
   return (
     <div className="min-h-screen bg-slate-50 pt-16">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import ChatWidget from './components/common/ChatWidget';
@@ -37,36 +37,45 @@ function NotFoundPage() {
   );
 }
 
+function AppShell() {
+  const { pathname } = useLocation();
+  const isMapHome = pathname === '/';
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Navbar />
+      <div className="flex-1">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/room/:id" element={<RoomDetailPage />} />
+          <Route path="/post" element={<PostRoomPage />} />
+          <Route path="/manage-rooms" element={<ManageRoomsPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/manage" element={<ManagePostsPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/landlord-support" element={<LandlordSupportPage />} />
+          <Route path="/guide" element={<GuidePage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/news" element={<NewsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </div>
+      {!isMapHome && <Footer />}
+      <ChatWidget />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <div className="flex-1">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/room/:id" element={<RoomDetailPage />} />
-            <Route path="/post" element={<PostRoomPage />} />
-            <Route path="/manage-rooms" element={<ManageRoomsPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/terms" element={<TermsPage />} />
-            <Route path="/privacy" element={<PrivacyPage />} />
-            <Route path="/manage" element={<ManagePostsPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/landlord-support" element={<LandlordSupportPage />} />
-            <Route path="/guide" element={<GuidePage />} />
-            <Route path="/contact" element={<ContactPage />} />
-            <Route path="/news" element={<NewsPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </div>
-        <Footer />
-        <ChatWidget />
-      </div>
+      <AppShell />
     </BrowserRouter>
   );
 }

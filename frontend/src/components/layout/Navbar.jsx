@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { clearAuthSession, fetchMe, getStoredUser } from '../../services/authApi';
 
 const NAV_LINKS = [
   { label: 'Trang chủ', path: '/' },
@@ -15,6 +16,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const [user, setUser] = useState(getStoredUser());
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -26,6 +28,20 @@ export default function Navbar() {
     setMenuOpen(false);
   }, [location]);
 
+  useEffect(() => {
+    const syncUser = async () => {
+      const me = await fetchMe();
+      setUser(me);
+    };
+    syncUser();
+  }, [location.pathname]);
+
+  const handleLogout = () => {
+    clearAuthSession();
+    setUser(null);
+    navigate('/login');
+  };
+
   return (
     <header
       className={`
@@ -35,7 +51,6 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
           <Link to="/" className="flex items-center gap-2 flex-shrink-0">
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm">
               <span className="text-white font-bold text-sm">T</span>
@@ -45,7 +60,6 @@ export default function Navbar() {
             </span>
           </Link>
 
-          {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
             {NAV_LINKS.map((link) => (
               <Link
@@ -55,8 +69,7 @@ export default function Navbar() {
                   px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200
                   ${location.pathname === link.path
                     ? 'text-blue-600 bg-blue-50'
-                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-                  }
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'}
                 `}
               >
                 {link.label}
@@ -64,9 +77,9 @@ export default function Navbar() {
             ))}
           </nav>
 
-          {/* Right actions */}
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={() => navigate('/post')}
               className="hidden md:inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
             >
@@ -74,16 +87,39 @@ export default function Navbar() {
               Đăng tin
             </button>
 
-            <button
-              onClick={() => navigate('/login')}
-              className="hidden md:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-2"
-            >
-              <span>👤</span>
-              <span className="hidden lg:inline">Đăng nhập</span>
-            </button>
+            {user ? (
+              <div className="hidden md:flex items-center gap-2">
+                <span className="text-sm text-gray-700">👤 {user.full_name}</span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-sm text-gray-600 hover:text-red-600 transition-colors border border-gray-200 hover:border-red-300 rounded-lg px-3 py-2"
+                >
+                  Đăng xuất
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  className="hidden md:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-2"
+                >
+                  <span>👤</span>
+                  <span className="hidden lg:inline">Đăng nhập</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/register')}
+                  className="hidden md:inline-flex items-center text-sm font-semibold rounded-lg px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  Đăng ký
+                </button>
+              </>
+            )}
 
-            {/* Mobile menu toggle */}
             <button
+              type="button"
               onClick={() => setMenuOpen(!menuOpen)}
               className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
               aria-label="Menu"
@@ -98,8 +134,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile menu */}
-      <div className={`md:hidden transition-all duration-300 overflow-hidden ${menuOpen ? 'max-h-80' : 'max-h-0'}`}>
+      <div className={`md:hidden transition-all duration-300 overflow-hidden ${menuOpen ? 'max-h-96' : 'max-h-0'}`}>
         <div className="bg-white border-t border-gray-100 px-4 py-3 space-y-1">
           {NAV_LINKS.map((link) => (
             <Link
@@ -109,23 +144,43 @@ export default function Navbar() {
                 block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors
                 ${location.pathname === link.path
                   ? 'text-blue-600 bg-blue-50'
-                  : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
-                }
+                  : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'}
               `}
             >
               {link.label}
             </Link>
           ))}
-          <div className="pt-2 border-t border-gray-100 flex gap-2">
+          <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+            {user ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full text-center text-sm text-gray-600 border border-gray-200 py-2.5 rounded-lg"
+              >
+                Đăng xuất
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  className="w-full text-center text-sm text-gray-600 border border-gray-200 py-2.5 rounded-lg"
+                >
+                  Đăng nhập
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/register')}
+                  className="w-full text-center text-sm font-semibold bg-blue-600 text-white py-2.5 rounded-lg"
+                >
+                  Đăng ký
+                </button>
+              </>
+            )}
             <button
-              onClick={() => navigate('/login')}
-              className="flex-1 text-center text-sm text-gray-600 border border-gray-200 py-2.5 rounded-lg"
-            >
-              Đăng nhập
-            </button>
-            <button
+              type="button"
               onClick={() => navigate('/post')}
-              className="flex-1 text-center text-sm text-white bg-blue-600 py-2.5 rounded-lg"
+              className="w-full text-center text-sm font-semibold text-white bg-blue-600 py-2.5 rounded-lg"
             >
               Đăng tin
             </button>
