@@ -51,6 +51,7 @@ function FlyToSelected({ room, center, enabled }) {
   useEffect(() => {
     if (!enabled || !room) return;
     const pos = getRoomLatLng(room, center);
+    if (!pos) return;
     map.flyTo(pos, 15, { duration: 0.55 });
   }, [map, room?.id, center, enabled, room]);
   return null;
@@ -61,10 +62,9 @@ function RoomMarker({ room, selected, onSelect }) {
     () => makePriceIcon(room.price, selected),
     [room.price, selected],
   );
-  const position = useMemo(
-    () => getRoomLatLng(room, DEFAULT_MAP_CENTER),
-    [room.id, room.latitude, room.longitude],
-  );
+  const position = useMemo(() => getRoomLatLng(room), [room.id, room.latitude, room.longitude]);
+
+  if (!position) return null;
 
   return (
     <Marker
@@ -77,45 +77,56 @@ function RoomMarker({ room, selected, onSelect }) {
 }
 
 export default function HomeMapLeaflet({ rooms, selectedId, onSelectRoom, panToSelection }) {
-  const selectedRoom = rooms.find((r) => r.id === selectedId) || null;
-  const points = useMemo(
-    () => rooms.map((r) => getRoomLatLng(r, DEFAULT_MAP_CENTER)),
+  const mappableRooms = useMemo(
+    () => rooms.filter((room) => getRoomLatLng(room)),
     [rooms],
   );
+  const selectedRoom = mappableRooms.find((r) => r.id === selectedId) || null;
+  const points = useMemo(() => mappableRooms.map((r) => getRoomLatLng(r)), [mappableRooms]);
+  const hasMapData = points.length > 0;
 
   return (
-    <MapContainer
-      center={DEFAULT_MAP_CENTER}
-      zoom={12}
-      className="h-full w-full min-h-[280px] z-0"
-      scrollWheelZoom
-      attributionControl
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar'
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        maxZoom={19}
-      />
-      <TileLayer
-        attribution=""
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-        maxZoom={19}
-        opacity={0.55}
-      />
-      <FitBounds points={points} />
-      <FlyToSelected
-        room={selectedRoom}
+    <div className="relative h-full w-full">
+      <MapContainer
         center={DEFAULT_MAP_CENTER}
-        enabled={Boolean(panToSelection && selectedRoom)}
-      />
-      {rooms.map((room) => (
-        <RoomMarker
-          key={room.id}
-          room={room}
-          selected={selectedId === room.id}
-          onSelect={onSelectRoom}
+        zoom={12}
+        className="h-full w-full min-h-[280px] z-0"
+        scrollWheelZoom
+        attributionControl
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar'
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={19}
         />
-      ))}
-    </MapContainer>
+        <TileLayer
+          attribution=""
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={19}
+          opacity={0.55}
+        />
+        <FitBounds points={points.filter(Boolean)} />
+        <FlyToSelected
+          room={selectedRoom}
+          center={DEFAULT_MAP_CENTER}
+          enabled={Boolean(panToSelection && selectedRoom)}
+        />
+        {mappableRooms.map((room) => (
+          <RoomMarker
+            key={room.id}
+            room={room}
+            selected={selectedId === room.id}
+            onSelect={onSelectRoom}
+          />
+        ))}
+      </MapContainer>
+      {!hasMapData && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/35 backdrop-blur-[1px] px-6 text-center">
+          <div className="max-w-sm rounded-2xl bg-white/95 px-4 py-3 text-sm text-slate-700 shadow-lg">
+            Chưa có tin nào đủ dữ liệu vị trí để hiển thị trên bản đồ.
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

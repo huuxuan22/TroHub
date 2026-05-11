@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import ChatWidget from './components/common/ChatWidget';
@@ -38,9 +39,6 @@ function NotFoundPage() {
 }
 
 function AppShell() {
-  const { pathname } = useLocation();
-  const isMapHome = pathname === '/';
-
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
@@ -66,7 +64,7 @@ function AppShell() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </div>
-      {!isMapHome && <Footer />}
+      <Footer />
       <ChatWidget />
     </div>
   );
@@ -75,7 +73,9 @@ function AppShell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppShell />
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

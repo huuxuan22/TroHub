@@ -48,13 +48,14 @@ export default function SearchPage() {
         };
         const sortParams = sortByMap[filters.sortBy] || sortByMap.newest;
 
-        let results = await fetchRooms({
+        const { rooms: fetched } = await fetchRooms({
           keyword,
           min_price: range?.min,
           max_price: range?.max,
           ...sortParams,
           limit: 60,
         });
+        let results = fetched;
 
         if (filters.type) {
           results = results.filter((r) => r.type === filters.type);

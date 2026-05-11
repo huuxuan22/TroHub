@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -11,13 +12,37 @@ export default function RegisterPage() {
     role: 'tenant',
     agree: false,
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const { register, login } = useAuth();
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: connect register API
-    console.log('register payload', form);
+    setError('');
+    if (form.password !== form.confirmPassword) {
+      setError('Mật khẩu nhập lại không khớp.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await register({
+        full_name: form.fullName,
+        email: form.email,
+        phone_number: form.phone,
+        role: form.role,
+        password: form.password,
+      });
+      await login(form.email, form.password);
+      navigate('/');
+    } catch (err) {
+      setError(err.message || 'Đăng ký thất bại');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -29,6 +54,11 @@ export default function RegisterPage() {
           <p className="text-sm text-gray-500 mb-6">Tạo tài khoản để tìm phòng nhanh hoặc đăng tin cho thuê.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="text-sm bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2">
+                {error}
+              </div>
+            )}
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label="Họ và tên">
                 <input
@@ -113,9 +143,10 @@ export default function RegisterPage() {
 
             <button
               type="submit"
+              disabled={loading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold transition-colors"
             >
-              Tạo tài khoản
+              {loading ? 'Đang tạo tài khoản...' : 'Tạo tài khoản'}
             </button>
           </form>
 

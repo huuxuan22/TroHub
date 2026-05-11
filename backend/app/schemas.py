@@ -67,6 +67,16 @@ class UserOut(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class LandlordProfileBase(BaseModel):
     user_id: int
     business_name: str | None = None
