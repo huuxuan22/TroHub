@@ -1,5 +1,10 @@
+import asyncio
 import os
+from contextlib import asynccontextmanager
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +18,7 @@ from app.routers.reports import router as reports_router
 from app.routers.rooms import router as rooms_router
 from app.routers.uploads import router as uploads_router
 from app.routers.users import router as users_router
+from app.routers.auth import router as auth_router
 
 load_dotenv()
 
@@ -22,11 +28,25 @@ _origins = os.getenv(
 )
 allow_origins = [o.strip() for o in _origins.split(",") if o.strip()]
 
+
+def _upgrade_db_schema() -> None:
+    backend_root = Path(__file__).resolve().parent.parent
+    cfg = Config(str(backend_root / "alembic.ini"))
+    command.upgrade(cfg, "head")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await asyncio.to_thread(_upgrade_db_schema)
+    yield
+
+
 app = FastAPI(
     title="TroHub Backend API",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -39,6 +59,7 @@ app.add_middleware(
 
 app.include_router(rooms_router)
 app.include_router(users_router)
+app.include_router(auth_router)
 app.include_router(messages_router)
 app.include_router(amenities_router)
 app.include_router(favorites_router)

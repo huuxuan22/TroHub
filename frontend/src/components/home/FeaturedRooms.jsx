@@ -15,7 +15,7 @@ export default function FeaturedRooms() {
     const loadFeaturedRooms = async () => {
       try {
         setLoading(true);
-        const data = await fetchRooms({ status: 'available', sort_by: 'created_at', sort_order: 'desc', limit: 12 });
+        const { rooms: data } = await fetchRooms({ status: 'available', sort_by: 'created_at', sort_order: 'desc', limit: 12 });
         setRooms(data);
       } catch {
         setRooms([]);

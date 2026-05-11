@@ -4,7 +4,8 @@ import { AMENITIES } from '../data/mockData';
 import StarRating from '../components/common/StarRating';
 import Badge from '../components/common/Badge';
 import RoomCard from '../components/rooms/RoomCard';
-import { fetchRoomDetail, fetchRooms } from '../services/roomApi';
+import HomeMapLeaflet from '../components/home/HomeMapLeaflet';
+import { fetchRoomDetail, fetchRooms, hasExactCoordinates } from '../services/roomApi';
 
 function formatPrice(price) {
   return price >= 1000000 ? `${(price / 1000000).toFixed(1).replace('.0', '')} triệu` : `${price / 1000}k`;
@@ -25,9 +26,9 @@ export default function RoomDetailPage() {
     const loadRoomDetail = async () => {
       try {
         setLoading(true);
-        const detail = await fetchRoomDetail(id);
+        const { room: detail } = await fetchRoomDetail(id);
         setRoom(detail);
-        const list = await fetchRooms({ keyword: detail.city || detail.address, limit: 6 });
+        const { rooms: list } = await fetchRooms({ keyword: detail.city || detail.address, limit: 6 });
         setRelatedRooms(list.filter((r) => r.id !== detail.id).slice(0, 3));
       } catch {
         setRoom(null);
@@ -213,10 +214,27 @@ export default function RoomDetailPage() {
                   </div>
                 )}
                 {tab === 'map' && (
-                  <div className="aspect-video bg-gray-100 rounded-xl flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="text-4xl mb-3">🧭</div>
-                      <p className="text-gray-600 font-medium">{room.address}</p>
+                  <div className="space-y-3">
+                    <div className="rounded-xl overflow-hidden border border-gray-100 aspect-video">
+                      {hasExactCoordinates(room) ? (
+                        <HomeMapLeaflet
+                          rooms={[room]}
+                          selectedId={room.id}
+                          onSelectRoom={() => {}}
+                          panToSelection
+                        />
+                      ) : (
+                        <div className="h-full bg-gray-100 rounded-xl flex items-center justify-center text-center px-6">
+                          <div>
+                            <div className="text-4xl mb-3">🧭</div>
+                            <p className="text-gray-700 font-medium">Tin này chưa suy ra được vị trí trên bản đồ</p>
+                            <p className="text-gray-400 text-sm mt-1">Hãy nhập địa chỉ rõ hơn hoặc bổ sung lat/lng để định vị chính xác.</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">
+                      <p className="text-gray-700 font-medium">{room.address}</p>
                       <p className="text-gray-400 text-sm">{room.city}</p>
                     </div>
                   </div>

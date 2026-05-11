@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { clearAuthSession, fetchMe, getStoredUser } from '../../services/authApi';
+import { useAuth } from '../../contexts/AuthContext';
 
 const NAV_LINKS = [
   { label: 'Trang chủ', path: '/' },
@@ -16,7 +16,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const [user, setUser] = useState(getStoredUser());
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -28,17 +28,8 @@ export default function Navbar() {
     setMenuOpen(false);
   }, [location]);
 
-  useEffect(() => {
-    const syncUser = async () => {
-      const me = await fetchMe();
-      setUser(me);
-    };
-    syncUser();
-  }, [location.pathname]);
-
   const handleLogout = () => {
-    clearAuthSession();
-    setUser(null);
+    logout();
     navigate('/login');
   };
 

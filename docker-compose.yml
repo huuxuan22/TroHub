@@ -32,6 +32,8 @@ services:
       - path: ./frontend/.env
         required: false
     environment:
+      # Phải khớp import.meta.env.VITE_API_BASE_URL trong FE (trình duyệt gọi host qua cổng publish)
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
       VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8000}
       VITE_CHATS_HTTP: ${VITE_CHATS_HTTP:-http://localhost:8001}
       VITE_CHATS_WS: ${VITE_CHATS_WS:-ws://localhost:8001}
@@ -47,6 +49,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: trohub_backend
+    # Cài lại deps từ requirements.txt mỗi lần khởi động (volume mount + image cache cũ hay gây thiếu sqlalchemy)
+    command:
+      - sh
+      - -c
+      - pip install --no-cache-dir -r requirements.txt && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     volumes:

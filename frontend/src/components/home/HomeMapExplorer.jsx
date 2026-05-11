@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapPin, Search } from 'lucide-react';
 import HomeMapLeaflet from './HomeMapLeaflet';
-import { fetchRooms } from '../../services/roomApi';
+import { fetchRooms, hasExactCoordinates } from '../../services/roomApi';
 
 const BUDGET_MAX = 50_000_000;
 const BUDGET_STEP = 500_000;
@@ -54,13 +54,15 @@ export default function HomeMapExplorer() {
     (async () => {
       try {
         setLoading(true);
-        const data = await fetchRooms({
+        const { rooms: data } = await fetchRooms({
           status: 'available',
           sort_by: 'created_at',
           sort_order: 'desc',
           limit: 80,
         });
-        if (!cancelled) setRooms(data);
+        if (!cancelled) {
+          setRooms(data);
+        }
       } catch {
         if (!cancelled) setRooms([]);
       } finally {
@@ -86,6 +88,12 @@ export default function HomeMapExplorer() {
     });
   }, [rooms, locationQuery, purpose, budgetMin, budgetMax]);
 
+  const exactLocationCount = useMemo(
+    () => filtered.filter((room) => hasExactCoordinates(room)).length,
+    [filtered],
+  );
+  const missingLocationCount = filtered.length - exactLocationCount;
+
   useEffect(() => {
     if (!filtered.length) {
       setSelectedId(null);
@@ -94,7 +102,7 @@ export default function HomeMapExplorer() {
     }
     if (!filtered.some((r) => r.id === selectedId)) {
       setMapPanUser(false);
-      setSelectedId(filtered[0].id);
+      setSelectedId((filtered.find((room) => hasExactCoordinates(room)) || filtered[0]).id);
     }
   }, [filtered, selectedId]);
 
@@ -117,7 +125,12 @@ export default function HomeMapExplorer() {
     <div className="flex flex-col lg:flex-row h-full min-h-0 bg-slate-100">
       {/* Sidebar */}
       <aside className="w-full lg:w-[400px] xl:w-[420px] flex-shrink-0 flex flex-col border-r border-slate-200 bg-white min-h-0 max-h-[42vh] lg:max-h-none lg:h-full shadow-sm z-10">
-        <div className="p-4 space-y-5 overflow-y-auto flex-1">
+          <div className="p-4 space-y-5 overflow-y-auto flex-1">
+          {!loading && missingLocationCount > 0 && (
+            <div className="text-xs bg-sky-50 border border-sky-200 text-sky-700 rounded-lg px-3 py-2">
+              {missingLocationCount} tin chưa đủ địa chỉ hoặc tọa độ nên tạm chưa ghim lên bản đồ.
+            </div>
+          )}
           <div>
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-2">
               <MapPin className="w-4 h-4 text-blue-600" strokeWidth={2} />
