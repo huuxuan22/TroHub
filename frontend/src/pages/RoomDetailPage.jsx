@@ -6,6 +6,7 @@ import Badge from '../components/common/Badge';
 import RoomCard from '../components/rooms/RoomCard';
 import HomeMapLeaflet from '../components/home/HomeMapLeaflet';
 import { fetchRoomDetail, fetchRooms, hasExactCoordinates } from '../services/roomApi';
+import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
 function formatPrice(price) {
   return price >= 1000000 ? `${(price / 1000000).toFixed(1).replace('.0', '')} triệu` : `${price / 1000}k`;
@@ -21,6 +22,9 @@ export default function RoomDetailPage() {
   const [tab, setTab] = useState('detail');
   const [relatedRooms, setRelatedRooms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [myLocation, setMyLocation] = useState(null);
+  const [myLocationError, setMyLocationError] = useState('');
+  const { requestLocation, loading: locating } = useGeolocation();
 
   useEffect(() => {
     const loadRoomDetail = async () => {
@@ -67,6 +71,32 @@ export default function RoomDetailPage() {
   const amenityDetails = (room.amenities || [])
     .map((id) => AMENITIES.find((a) => a.id === id))
     .filter(Boolean);
+
+  const distanceKm =
+    myLocation && room.latitude != null && room.longitude != null
+      ? haversineDistanceKm(myLocation.latitude, myLocation.longitude, room.latitude, room.longitude)
+      : null;
+
+  const handleGetMyLocation = async () => {
+    setMyLocationError('');
+    try {
+      const pos = await requestLocation();
+      setMyLocation(pos);
+    } catch (err) {
+      setMyLocationError(err.message || 'Không lấy được vị trí.');
+    }
+  };
+
+  const openDirections = () => {
+    if (!hasExactCoordinates(room)) return;
+    const dest = `${room.latitude},${room.longitude}`;
+    const origin = myLocation ? `&origin=${myLocation.latitude},${myLocation.longitude}` : '';
+    window.open(
+      `https://www.google.com/maps/dir/?api=1&destination=${dest}${origin}&travelmode=driving`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 pt-16">
@@ -221,7 +251,8 @@ export default function RoomDetailPage() {
                           rooms={[room]}
                           selectedId={room.id}
                           onSelectRoom={() => {}}
-                          panToSelection
+                          panToSelection={!myLocation}
+                          userLocation={myLocation}
                         />
                       ) : (
                         <div className="h-full bg-gray-100 rounded-xl flex items-center justify-center text-center px-6">
@@ -233,6 +264,48 @@ export default function RoomDetailPage() {
                         </div>
                       )}
                     </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {myLocation ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-1.5 text-xs font-semibold">
+                          ✓ Đang dùng vị trí của bạn
+                          {distanceKm != null && Number.isFinite(distanceKm) && (
+                            <> · cách phòng <strong>{formatDistanceKm(distanceKm)}</strong></>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setMyLocation(null)}
+                            className="ml-1 underline hover:no-underline"
+                          >
+                            Tắt
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleGetMyLocation}
+                          disabled={locating}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1.5 text-xs font-semibold hover:bg-blue-100 disabled:opacity-60"
+                        >
+                          {locating ? '⏳ Đang định vị...' : '📍 Hiện vị trí của tôi'}
+                        </button>
+                      )}
+                      {hasExactCoordinates(room) && (
+                        <button
+                          type="button"
+                          onClick={openDirections}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-xs font-semibold"
+                        >
+                          🚗 Chỉ đường (Google Maps)
+                        </button>
+                      )}
+                    </div>
+                    {myLocationError && (
+                      <p className="text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2">
+                        {myLocationError}
+                      </p>
+                    )}
+
                     <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">
                       <p className="text-gray-700 font-medium">{room.address}</p>
                       <p className="text-gray-400 text-sm">{room.city}</p>

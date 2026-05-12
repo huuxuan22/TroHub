@@ -1,5 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { isApprovedLandlordAccount } from '../utils/userRoles';
 import { CATEGORIES, CITIES, AMENITIES } from '../data/mockData';
+import { createRoom, uploadRoomImage } from '../services/roomApi';
+import { reverseGeocode } from '../services/geocodingApi';
+import useGeolocation from '../utils/useGeolocation';
 
 const STEPS = [
   { id: 1, label: 'Thông tin cơ bản', icon: '🧾' },
@@ -8,16 +14,129 @@ const STEPS = [
   { id: 4, label: 'Xác nhận', icon: '🎉' },
 ];
 
+const MAX_IMAGES = 10;
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+function buildAddress(detail, city) {
+  const left = (detail || '').trim().replace(/,\s*$/, '');
+  const right = (city || '').trim();
+  if (left && right) return `${left}, ${right}`;
+  return left || right;
+}
+
+function buildDescription(form) {
+  const lines = [];
+  if (form.description) lines.push(form.description.trim());
+  if (form.deposit) {
+    const dep = Number(form.deposit);
+    if (Number.isFinite(dep) && dep > 0) {
+      lines.push(`Tiền cọc: ${new Intl.NumberFormat('vi-VN').format(dep)} đ.`);
+    }
+  }
+  const contactBits = [];
+  if (form.contactName) contactBits.push(form.contactName.trim());
+  if (form.contactPhone) contactBits.push(`SĐT ${form.contactPhone.trim()}`);
+  if (form.contactEmail) contactBits.push(form.contactEmail.trim());
+  if (contactBits.length) lines.push(`Liên hệ: ${contactBits.join(' · ')}.`);
+  if (Array.isArray(form.amenities) && form.amenities.length) {
+    const labels = form.amenities
+      .map((id) => AMENITIES.find((a) => a.id === id)?.label)
+      .filter(Boolean)
+      .join(', ');
+    if (labels) lines.push(`Tiện ích: ${labels}.`);
+  }
+  return lines.join('\n').trim();
+}
+
+function formatPriceMillion(price) {
+  const n = Number(price);
+  if (!Number.isFinite(n) || n <= 0) return 'Chưa nhập';
+  return `${(n / 1_000_000).toFixed(1)} triệu/tháng`;
+}
+
 export default function PostRoomPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const previewObjectUrls = useRef([]);
+
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     title: '', type: '', city: '', address: '', area: '',
     description: '', amenities: [], price: '', deposit: '',
-    contactName: '', contactPhone: '', contactEmail: '',
-    images: [],
+    contactName: user?.full_name || '',
+    contactPhone: user?.phone_number || '',
+    contactEmail: user?.email || '',
+    latitude: null,
+    longitude: null,
   });
+  const [images, setImages] = useState([]); // [{ file, previewUrl, uploadedUrl?, error? }]
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [locating, setLocating] = useState(false);
+  const [locationNote, setLocationNote] = useState('');
+  const { requestLocation } = useGeolocation();
+
+  useEffect(() => {
+    return () => {
+      previewObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleAddressChange = (value) => {
+    setLocationNote('');
+    setForm((prev) => ({ ...prev, address: value, latitude: null, longitude: null }));
+  };
+
+  const findCityFromList = (raw) => {
+    if (!raw) return '';
+    const lowered = String(raw).toLowerCase();
+    return (
+      CITIES.find((c) => lowered.includes(c.toLowerCase())) ||
+      CITIES.find((c) => lowered.includes(c.toLowerCase().replace('tp. ', ''))) ||
+      ''
+    );
+  };
+
+  const useCurrentLocation = async () => {
+    setError('');
+    setLocationNote('');
+    setLocating(true);
+    try {
+      const pos = await requestLocation();
+      let reverse = null;
+      try {
+        reverse = await reverseGeocode(pos.latitude, pos.longitude);
+      } catch {
+        // Bỏ qua lỗi reverse: vẫn lưu toạ độ thô cho người dùng tự nhập địa chỉ.
+      }
+      const address = reverse?.address || '';
+      const detectedCity = findCityFromList(reverse?.city || reverse?.display_name || address);
+
+      setForm((prev) => ({
+        ...prev,
+        address: address || prev.address,
+        city: detectedCity || prev.city,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      }));
+      setLocationNote(
+        address
+          ? `Đã lấy vị trí (±${Math.round(pos.accuracy)} m): ${address}`
+          : `Đã lấy toạ độ (±${Math.round(pos.accuracy)} m) — bạn vui lòng nhập thêm địa chỉ chi tiết.`,
+      );
+    } catch (err) {
+      setError(err.message || 'Không lấy được vị trí hiện tại.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
   const toggleAmenity = (id) => {
     const next = form.amenities.includes(id)
       ? form.amenities.filter((a) => a !== id)
@@ -25,37 +144,219 @@ export default function PostRoomPage() {
     update('amenities', next);
   };
 
-  const isStepValid = () => {
-    if (step === 1) return form.title && form.type && form.city && form.address && form.area;
-    if (step === 3) return form.price && form.contactName && form.contactPhone;
+  const validateStep1 = () => {
+    if (!form.title.trim()) return 'Vui lòng nhập tiêu đề tin đăng.';
+    if (!form.type) return 'Vui lòng chọn loại hình.';
+    if (!form.city) return 'Vui lòng chọn tỉnh / thành phố.';
+    if (!form.address.trim()) return 'Vui lòng nhập địa chỉ cụ thể.';
+    const area = Number(form.area);
+    if (!Number.isFinite(area) || area <= 0) return 'Diện tích phải là số dương.';
+    return '';
+  };
+  const validateStep3 = () => {
+    const price = Number(form.price);
+    if (!Number.isFinite(price) || price <= 0) return 'Vui lòng nhập giá thuê hợp lệ.';
+    if (!form.contactName.trim()) return 'Vui lòng nhập họ tên người liên hệ.';
+    if (!form.contactPhone.trim()) return 'Vui lòng nhập số điện thoại liên hệ.';
+    return '';
+  };
+
+  const isStepValid = (currentStep = step) => {
+    if (currentStep === 1) return !validateStep1();
+    if (currentStep === 3) return !validateStep3();
+    if (currentStep === 4) return agreeTerms;
     return true;
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (step < 4) setStep(step + 1);
+  const goNext = () => {
+    setError('');
+    if (step === 1) {
+      const msg = validateStep1();
+      if (msg) {
+        setError(msg);
+        return;
+      }
+    }
+    if (step === 3) {
+      const msg = validateStep3();
+      if (msg) {
+        setError(msg);
+        return;
+      }
+    }
+    if (step < STEPS.length) setStep(step + 1);
   };
 
+  const goPrev = () => {
+    setError('');
+    setStep((s) => Math.max(1, s - 1));
+  };
+
+  const handleFilesSelected = async (fileList) => {
+    setError('');
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+
+    const remaining = MAX_IMAGES - images.length;
+    if (remaining <= 0) {
+      setError(`Chỉ cho phép tối đa ${MAX_IMAGES} ảnh.`);
+      return;
+    }
+    const accepted = incoming.slice(0, remaining);
+
+    const newItems = accepted.map((file) => {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        return { file, error: 'Loại file không hỗ trợ (chỉ JPG/PNG/WebP/GIF).' };
+      }
+      if (file.size > MAX_IMAGE_SIZE) {
+        return { file, error: 'File vượt 5MB.' };
+      }
+      const previewUrl = URL.createObjectURL(file);
+      previewObjectUrls.current.push(previewUrl);
+      return { file, previewUrl, uploading: true };
+    });
+
+    const startIdx = images.length;
+    setImages((prev) => [...prev, ...newItems]);
+
+    await Promise.all(
+      newItems.map(async (item, i) => {
+        const targetIdx = startIdx + i;
+        if (item.error) return;
+        try {
+          const url = await uploadRoomImage(item.file);
+          setImages((prev) => {
+            const next = [...prev];
+            if (next[targetIdx]) next[targetIdx] = { ...next[targetIdx], uploadedUrl: url, uploading: false };
+            return next;
+          });
+        } catch (err) {
+          setImages((prev) => {
+            const next = [...prev];
+            if (next[targetIdx]) {
+              next[targetIdx] = { ...next[targetIdx], uploading: false, error: err.message || 'Upload thất bại' };
+            }
+            return next;
+          });
+        }
+      }),
+    );
+  };
+
+  const removeImage = (index) => {
+    setImages((prev) => {
+      const next = [...prev];
+      const removed = next.splice(index, 1)[0];
+      if (removed?.previewUrl) {
+        try {
+          URL.revokeObjectURL(removed.previewUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+      return next;
+    });
+  };
+
+  const submit = async () => {
+    setError('');
+    setSuccess('');
+
+    const m1 = validateStep1();
+    if (m1) {
+      setError(m1);
+      setStep(1);
+      return;
+    }
+    const m3 = validateStep3();
+    if (m3) {
+      setError(m3);
+      setStep(3);
+      return;
+    }
+    if (!agreeTerms) {
+      setError('Vui lòng đồng ý với điều khoản trước khi đăng tin.');
+      return;
+    }
+    if (images.some((img) => img.uploading)) {
+      setError('Vẫn còn ảnh đang upload, vui lòng đợi trong giây lát.');
+      return;
+    }
+
+    const imageUrls = images.map((img) => img.uploadedUrl).filter(Boolean);
+
+    const payload = {
+      title: form.title.trim(),
+      room_type: form.type,
+      description: buildDescription(form) || null,
+      price: Number(form.price),
+      area_sqm: Number(form.area),
+      address: buildAddress(form.address, form.city),
+      status: 'available',
+      source: 'owner',
+      image_urls: imageUrls,
+    };
+
+    if (Number.isFinite(form.latitude) && Number.isFinite(form.longitude)) {
+      payload.latitude = Number(form.latitude);
+      payload.longitude = Number(form.longitude);
+    }
+
+    setSubmitting(true);
+    try {
+      const room = await createRoom(payload);
+      setSuccess('🎉 Đăng tin thành công! Đang chuyển đến trang quản lý tin...');
+      setTimeout(() => {
+        if (room?.id) {
+          navigate(`/room/${room.id}`, { replace: true });
+        } else {
+          navigate('/manage-rooms', { replace: true });
+        }
+      }, 1200);
+    } catch (err) {
+      setError(err.message || 'Đăng tin thất bại');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+    if (step < STEPS.length) {
+      goNext();
+    } else {
+      submit();
+    }
+  };
+
+  const stepProgress = ((step - 1) / (STEPS.length - 1)) * 100;
+  const hasUploadingImage = images.some((img) => img.uploading);
+
   return (
-    <div className="min-h-screen bg-slate-50 pt-16">
+    <div className="min-h-screen bg-slate-50 pt-20">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="text-center mb-8">
+          {isApprovedLandlordAccount(user) && (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 text-left max-w-xl mx-auto">
+              Tài khoản chủ nhà của bạn đã được duyệt — bạn có thể đăng tin cho thuê. Chỉ những tài khoản đã duyệt mới
+              vào được trang này và gửi tin lên hệ thống.
+            </div>
+          )}
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Đăng tin cho thuê</h1>
           <p className="text-gray-500">Tiếp cận hàng nghìn người thuê trọ tiềm năng</p>
         </div>
 
-        {/* Progress steps */}
         <div className="flex items-center justify-between mb-8 relative">
           <div className="absolute top-5 left-0 right-0 h-0.5 bg-gray-200 z-0">
             <div
               className="h-full bg-blue-600 transition-all duration-500"
-              style={{ width: `${((step - 1) / (STEPS.length - 1)) * 100}%` }}
+              style={{ width: `${stepProgress}%` }}
             />
           </div>
           {STEPS.map((s) => (
             <div key={s.id} className="relative z-10 flex flex-col items-center gap-2">
               <button
+                type="button"
                 onClick={() => s.id < step && setStep(s.id)}
                 className={`w-10 h-10 rounded-full flex items-center justify-center text-base transition-all duration-300 border-2 ${
                   step > s.id
@@ -74,7 +375,18 @@ export default function PostRoomPage() {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit}>
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm px-4 py-3">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm px-4 py-3">
+            {success}
+          </div>
+        )}
+
+        <form onSubmit={onSubmit}>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
             {/* Step 1 */}
             {step === 1 && (
@@ -107,13 +419,34 @@ export default function PostRoomPage() {
                 </div>
 
                 <FormField label="Địa chỉ cụ thể *">
-                  <input
-                    value={form.address}
-                    onChange={(e) => update('address', e.target.value)}
-                    placeholder="Số nhà, đường, phường/xã, quận/huyện"
-                    className={inputCls}
-                    required
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={form.address}
+                      onChange={(e) => handleAddressChange(e.target.value)}
+                      placeholder="Số nhà, đường, phường/xã, quận/huyện"
+                      className={`${inputCls} flex-1`}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={useCurrentLocation}
+                      disabled={locating}
+                      className="inline-flex items-center gap-1.5 shrink-0 px-3.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 disabled:opacity-60"
+                      title="Dùng định vị GPS để tự điền địa chỉ và lưu toạ độ chính xác"
+                    >
+                      {locating ? '⏳ Đang lấy...' : '📍 Vị trí hiện tại'}
+                    </button>
+                  </div>
+                  {locationNote && (
+                    <p className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                      {locationNote}
+                    </p>
+                  )}
+                  {form.latitude != null && form.longitude != null && (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Toạ độ đã lưu: {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}
+                    </p>
+                  )}
                 </FormField>
 
                 <FormField label="Diện tích (m²) *">
@@ -124,6 +457,7 @@ export default function PostRoomPage() {
                     placeholder="VD: 25"
                     className={inputCls}
                     min="1"
+                    step="0.1"
                     required
                   />
                 </FormField>
@@ -145,19 +479,65 @@ export default function PostRoomPage() {
               <div className="space-y-6">
                 <SectionTitle icon="🖼️" title="Hình ảnh & Tiện ích" />
 
-                {/* Image upload */}
-                <FormField label="Hình ảnh phòng">
-                  <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-blue-300 hover:bg-blue-50 transition-all cursor-pointer group">
-                    <div className="text-4xl mb-3">🖼️</div>
-                    <p className="font-medium text-gray-700 group-hover:text-blue-600">Kéo thả hoặc nhấn để tải ảnh</p>
-                    <p className="text-sm text-gray-400 mt-1">PNG, JPG tối đa 5MB. Tối đa 10 ảnh</p>
-                    <button type="button" className="mt-3 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                      Chọn ảnh
-                    </button>
+                <FormField label={`Hình ảnh phòng (${images.length}/${MAX_IMAGES})`}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ALLOWED_IMAGE_TYPES.join(',')}
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      handleFilesSelected(e.target.files);
+                      if (e.target) e.target.value = '';
+                    }}
+                  />
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleFilesSelected(e.dataTransfer.files);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-blue-300 hover:bg-blue-50 transition-all cursor-pointer group"
+                  >
+                    <div className="text-4xl mb-2">🖼️</div>
+                    <p className="font-medium text-gray-700 group-hover:text-blue-600">
+                      Kéo thả hoặc nhấn để tải ảnh
+                    </p>
+                    <p className="text-sm text-gray-400 mt-1">PNG, JPG, WebP, GIF · tối đa 5MB · tối đa {MAX_IMAGES} ảnh</p>
                   </div>
+
+                  {images.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+                      {images.map((img, idx) => (
+                        <div key={idx} className="relative group rounded-xl overflow-hidden border border-gray-200 bg-white">
+                          {img.previewUrl ? (
+                            <img src={img.previewUrl} alt="" className="w-full h-32 object-cover" />
+                          ) : (
+                            <div className="w-full h-32 bg-gray-100 flex items-center justify-center text-3xl">📷</div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(idx)}
+                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 text-red-600 text-sm font-bold hover:bg-white shadow-sm"
+                            title="Xoá"
+                          >
+                            ×
+                          </button>
+                          <div className="absolute bottom-2 left-2 right-2 text-xs text-white truncate">
+                            {img.uploading && <span>⏳ Đang upload...</span>}
+                            {!img.uploading && img.uploadedUrl && <span>✓ Sẵn sàng</span>}
+                            {img.error && <span className="text-red-200">{img.error}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </FormField>
 
-                {/* Amenities */}
                 <FormField label="Tiện ích">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {AMENITIES.map((a) => (
@@ -209,14 +589,6 @@ export default function PostRoomPage() {
                   </FormField>
                 </div>
 
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                  <p className="text-sm font-semibold text-blue-800 mb-1">✨ Gợi ý giá từ AI</p>
-                  <p className="text-sm text-blue-700">
-                    Dựa trên vị trí và loại phòng, mức giá hợp lý cho khu vực này là{' '}
-                    <strong>2.5 - 4 triệu/tháng</strong>
-                  </p>
-                </div>
-
                 <SectionTitle icon="📞" title="Thông tin liên hệ" />
 
                 <FormField label="Họ và tên *">
@@ -258,24 +630,54 @@ export default function PostRoomPage() {
               <div className="space-y-6">
                 <SectionTitle icon="🎉" title="Xác nhận thông tin" />
 
-                <div className="space-y-4">
+                <div className="space-y-1.5">
                   <ReviewItem label="Tiêu đề" value={form.title} />
                   <ReviewItem label="Loại hình" value={form.type} />
-                  <ReviewItem label="Địa chỉ" value={`${form.address}, ${form.city}`} />
-                  <ReviewItem label="Diện tích" value={`${form.area} m²`} />
-                  <ReviewItem label="Giá thuê" value={form.price ? `${(parseInt(form.price) / 1000000).toFixed(1)} triệu/tháng` : 'Chưa nhập'} />
-                  <ReviewItem label="Liên hệ" value={`${form.contactName} - ${form.contactPhone}`} />
+                  <ReviewItem label="Địa chỉ" value={buildAddress(form.address, form.city)} />
+                  <ReviewItem label="Diện tích" value={form.area ? `${form.area} m²` : '—'} />
+                  <ReviewItem label="Giá thuê" value={formatPriceMillion(form.price)} />
+                  <ReviewItem
+                    label="Tiền cọc"
+                    value={form.deposit ? `${new Intl.NumberFormat('vi-VN').format(Number(form.deposit))} đ` : '—'}
+                  />
+                  <ReviewItem
+                    label="Liên hệ"
+                    value={`${form.contactName || '—'} · ${form.contactPhone || '—'}`}
+                  />
+                  <ReviewItem
+                    label="Ảnh"
+                    value={`${images.filter((img) => img.uploadedUrl).length}/${images.length} ảnh sẵn sàng`}
+                  />
+                  <ReviewItem
+                    label="Tiện ích"
+                    value={
+                      form.amenities.length
+                        ? form.amenities
+                            .map((id) => AMENITIES.find((a) => a.id === id)?.label)
+                            .filter(Boolean)
+                            .join(', ')
+                        : '—'
+                    }
+                  />
                 </div>
 
-                <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-                  <p className="text-sm text-green-800 font-medium flex items-center gap-2">
-                    <span>🤖</span>
-                    AI TroHub sẽ tự động tối ưu hóa tin đăng của bạn để tiếp cận đúng đối tượng tìm kiếm.
-                  </p>
+                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 text-sm text-blue-800">
+                  <p className="font-semibold mb-1">Sau khi gửi:</p>
+                  <ul className="list-disc pl-5 space-y-0.5 text-blue-700">
+                    <li>Tin được lưu với trạng thái <strong>Đang hiển thị</strong>.</li>
+                    <li>Bạn có thể chỉnh sửa / ẩn / xoá trong trang <em>Quản lý phòng</em>.</li>
+                    <li>Admin có thể ẩn tin nếu phát hiện vi phạm.</li>
+                  </ul>
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <input type="checkbox" id="terms" className="mt-0.5 accent-blue-600" required />
+                  <input
+                    type="checkbox"
+                    id="terms"
+                    checked={agreeTerms}
+                    onChange={(e) => setAgreeTerms(e.target.checked)}
+                    className="mt-0.5 accent-blue-600"
+                  />
                   <label htmlFor="terms" className="text-sm text-gray-600">
                     Tôi đồng ý với{' '}
                     <a href="/terms" className="text-blue-600 hover:underline">Điều khoản dịch vụ</a>{' '}
@@ -288,12 +690,11 @@ export default function PostRoomPage() {
             )}
           </div>
 
-          {/* Navigation buttons */}
           <div className="flex items-center justify-between mt-6">
             <button
               type="button"
-              onClick={() => setStep(Math.max(1, step - 1))}
-              disabled={step === 1}
+              onClick={goPrev}
+              disabled={step === 1 || submitting}
               className="flex items-center gap-2 px-6 py-3 border border-gray-200 text-gray-600 rounded-xl font-medium hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ← Quay lại
@@ -303,10 +704,10 @@ export default function PostRoomPage() {
               {step}/{STEPS.length}
             </div>
 
-            {step < 4 ? (
+            {step < STEPS.length ? (
               <button
                 type="submit"
-                disabled={!isStepValid()}
+                disabled={!isStepValid(step) || submitting}
                 className="flex items-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Tiếp theo →
@@ -314,9 +715,10 @@ export default function PostRoomPage() {
             ) : (
               <button
                 type="submit"
-                className="flex items-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors"
+                disabled={!agreeTerms || submitting || hasUploadingImage}
+                className="flex items-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                ✅ Đăng tin ngay
+                {submitting ? '⏳ Đang đăng...' : hasUploadingImage ? '⏳ Đang upload ảnh...' : '✅ Đăng tin ngay'}
               </button>
             )}
           </div>
@@ -326,7 +728,8 @@ export default function PostRoomPage() {
   );
 }
 
-const inputCls = 'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all';
+const inputCls =
+  'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all';
 
 function FormField({ label, children }) {
   return (
@@ -347,9 +750,9 @@ function SectionTitle({ icon, title }) {
 
 function ReviewItem({ label, value }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
-      <span className="text-sm text-gray-500">{label}</span>
-      <span className="text-sm font-semibold text-gray-900">{value || '—'}</span>
+    <div className="flex items-start justify-between gap-3 py-2.5 border-b border-gray-100 last:border-0">
+      <span className="text-sm text-gray-500 shrink-0">{label}</span>
+      <span className="text-sm font-semibold text-gray-900 text-right">{value || '—'}</span>
     </div>
   );
 }

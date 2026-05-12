@@ -19,10 +19,10 @@ def apply_as_landlord(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tài khoản admin không cần đăng ký chủ phòng.")
 
     prof = user.landlord_profile
-    if prof is not None and prof.is_verified:
+    if prof is not None and prof.is_verified == 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tài khoản của bạn đã là chủ phòng được xác minh.",
+            detail="Tài khoản của bạn đã là chủ nhà được xác minh.",
         )
 
     if prof is None:
@@ -31,14 +31,14 @@ def apply_as_landlord(
             business_name=payload.business_name.strip(),
             national_id=payload.national_id.strip(),
             business_license=(payload.business_license or "").strip() or None,
-            is_verified=False,
+            is_verified=0,
         )
         db.add(prof)
     else:
         prof.business_name = payload.business_name.strip()
         prof.national_id = payload.national_id.strip()
         prof.business_license = (payload.business_license or "").strip() or None
-        prof.is_verified = False
+        prof.is_verified = 0
 
     db.commit()
     db.refresh(prof)

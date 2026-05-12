@@ -115,7 +115,12 @@ export default function RoomCard({ room, featured = false }) {
         {/* Address */}
         <p className="text-xs text-gray-500 mb-3 flex items-center gap-1">
           <span>📍</span>
-          <span className="truncate">{room.address}, {room.city}</span>
+          <span className="truncate">{room.address}{room.city ? `, ${room.city}` : ''}</span>
+          {room.distanceLabel && (
+            <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full shrink-0">
+              🧭 {room.distanceLabel}
+            </span>
+          )}
         </p>
 
         {/* AI Highlight */}

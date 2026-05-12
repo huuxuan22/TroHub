@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.schemas import LoginRequest, TokenOut, UserCreate, UserOut, UserRegister, UserRoleSchema
@@ -60,8 +60,18 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-def get_me(current_user: UserModel = Depends(get_current_user)):
-    return current_user
+def get_me(
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    # Luôn tải landlord_profile trong cùng session (JSON đủ is_verified: 0/1 sau khi admin duyệt).
+    user = (
+        db.query(UserModel)
+        .options(joinedload(UserModel.landlord_profile))
+        .filter(UserModel.id == current_user.id)
+        .first()
+    )
+    return user if user is not None else current_user
 
 
 @router.post("/logout")

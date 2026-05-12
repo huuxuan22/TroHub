@@ -1,18 +1,30 @@
-/** @param {{ role?: string; landlord_profile?: { is_verified?: boolean } | null } | null | undefined} user */
+/** Admin hoặc chủ nhà đã admin duyệt (role landlord + landlord_profiles.is_verified = 1) — mới được đăng tin / quản lý tin. */
 export function canPostRoom(user) {
   if (!user?.role) return false;
-  if (user.role === 'admin') return true;
-  if (user.role === 'landlord' && user.landlord_profile?.is_verified) return true;
+  const role = String(user.role).toLowerCase();
+  if (role === 'admin') return true;
+  const v = user.landlord_profile?.is_verified;
+  const verified = Number(v) === 1 || v === true;
+  if (role === 'landlord' && verified) return true;
   return false;
 }
 
-/** Đã gửi hồ sơ chủ phòng, chưa được xác minh */
-export function hasPendingLandlordApplication(user) {
-  if (!user?.landlord_profile) return false;
-  return !user.landlord_profile.is_verified;
+/** Chủ nhà đã duyệt (không gồm admin). */
+export function isApprovedLandlordAccount(user) {
+  if (!user?.role) return false;
+  if (String(user.role).toLowerCase() !== 'landlord') return false;
+  const v = user.landlord_profile?.is_verified;
+  return Number(v) === 1 || v === true;
 }
 
-/** Quản lý tin / đăng tin (chỉ chủ phòng đã duyệt hoặc admin) */
+/** Đã gửi hồ sơ chủ nhà, chưa được duyệt (is_verified ≠ 1) */
+export function hasPendingLandlordApplication(user) {
+  if (!user?.landlord_profile) return false;
+  const v = user.landlord_profile.is_verified;
+  return Number(v) !== 1 && v !== true;
+}
+
+/** Quản lý tin / đăng tin — chỉ tài khoản đã duyệt (hoặc admin). */
 export function canPostAndManageRooms(user) {
   return canPostRoom(user);
 }

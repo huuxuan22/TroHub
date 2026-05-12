@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum as SqlEnum, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum as SqlEnum, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -77,7 +77,8 @@ class LandlordProfile(Base):
     business_name: Mapped[str | None] = mapped_column(String(255))
     national_id: Mapped[str | None] = mapped_column(String(50))
     business_license: Mapped[str | None] = mapped_column(String(255))
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 0 = chưa duyệt, 1 = admin đã duyệt (MySQL TINYINT; API trả JSON số 0/1).
+    is_verified: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="landlord_profile")

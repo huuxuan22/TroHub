@@ -140,7 +140,7 @@ class LandlordProfileBase(BaseModel):
     business_name: str | None = None
     national_id: str | None = None
     business_license: str | None = None
-    is_verified: bool = False
+    is_verified: int = Field(default=0, ge=0, le=1, description="0 = chưa duyệt, 1 = đã duyệt")
 
 
 class LandlordProfileCreate(LandlordProfileBase):
@@ -151,7 +151,7 @@ class LandlordProfileUpdate(BaseModel):
     business_name: str | None = None
     national_id: str | None = None
     business_license: str | None = None
-    is_verified: bool | None = None
+    is_verified: int | None = Field(default=None, ge=0, le=1)
 
 
 class LandlordProfileOut(LandlordProfileBase):
@@ -203,6 +203,8 @@ class RoomCreateRequest(RoomListingFields):
     """Phần body khi chủ nhà/admin tạo phòng; landlord_id do server gán (trừ khi là admin chỉ định)."""
 
     landlord_id: int | None = None
+    image_urls: list[str] = Field(default_factory=list, description="Danh sách URL ảnh đã upload")
+    amenity_ids: list[int] = Field(default_factory=list, description="ID tiện ích đính kèm")
 
 
 class RoomUpdate(BaseModel):
@@ -220,13 +222,6 @@ class RoomUpdate(BaseModel):
     expires_at: datetime | None = None
 
 
-class RoomOut(RoomBase):
-    id: int
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class RoomImageBase(BaseModel):
     room_id: int
     image_url: str
@@ -238,6 +233,18 @@ class RoomImageCreate(RoomImageBase):
 
 class RoomImageOut(RoomImageBase):
     id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RoomImageAddIn(BaseModel):
+    image_url: str = Field(..., min_length=1, max_length=600)
+
+
+class RoomOut(RoomBase):
+    id: int
+    created_at: datetime
+    images: list[RoomImageOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -410,3 +417,60 @@ class CrawlHistoryOut(CrawlHistoryBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# === Admin dashboard ===
+
+class AdminStatsOut(BaseModel):
+    """Số liệu tổng quan cho trang quản trị."""
+
+    total_users: int
+    total_tenants: int
+    total_landlords: int
+    total_admins: int
+    pending_landlord_applications: int
+    verified_landlords: int
+    total_rooms: int
+    rooms_available: int
+    rooms_hidden: int
+    total_reports: int
+    pending_reports: int
+
+
+class LandlordApplicationOut(BaseModel):
+    """Hồ sơ chủ nhà kèm thông tin user — dùng cho admin xét duyệt."""
+
+    id: int
+    user_id: int
+    business_name: str | None = None
+    national_id: str | None = None
+    business_license: str | None = None
+    is_verified: int
+    created_at: datetime
+    user: UserOut
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserStatusPatch(BaseModel):
+    status: UserStatusSchema
+
+
+class RoomStatusPatch(BaseModel):
+    status: RoomStatusSchema
+
+
+class ReportStatusPatch(BaseModel):
+    status: ReportStatusSchema
+
+
+class LandlordRejectIn(BaseModel):
+    """Body tuỳ chọn khi admin từ chối hồ sơ — kèm lý do để gửi vào Notification."""
+
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class LandlordProfileCounts(BaseModel):
+    pending: int
+    verified: int
+    total: int

@@ -1,26 +1,73 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { canPostRoom, hasPendingLandlordApplication } from '../utils/userRoles';
 
+/**
+ * Chờ admin duyệt hồ sơ (landlord_profiles.is_verified = 0).
+ * Luôn gọi /me trước rồi mới quyết định redirect — khớp với trạng thái 0/1 trên server.
+ */
 export default function LandlordPendingPage() {
   const { user, authLoading, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const [phase, setPhase] = useState('loading'); // loading | ready
 
   useEffect(() => {
-    if (authLoading || !user) return;
-    if (canPostRoom(user)) {
-      navigate('/post', { replace: true });
-    } else if (!hasPendingLandlordApplication(user)) {
-      navigate('/become-landlord', { replace: true });
+    if (authLoading) return;
+    if (!user) {
+      setPhase('ready');
+      return;
     }
-  }, [authLoading, user, navigate]);
+    let cancelled = false;
+    setPhase('loading');
+    (async () => {
+      try {
+        const me = await refreshUser();
+        if (cancelled) return;
+        if (!me) {
+          navigate('/login', { replace: true, state: { from: '/landlord-pending' } });
+          return;
+        }
+        if (canPostRoom(me)) {
+          navigate('/post', { replace: true });
+          return;
+        }
+        if (!hasPendingLandlordApplication(me)) {
+          navigate('/become-landlord', { replace: true });
+          return;
+        }
+        setPhase('ready');
+      } catch {
+        if (!cancelled) setPhase('ready');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user?.id, refreshUser, navigate]);
 
   const handleRecheck = async () => {
-    await refreshUser();
+    setPhase('loading');
+    try {
+      const me = await refreshUser();
+      if (!me) {
+        navigate('/login', { replace: true, state: { from: '/landlord-pending' } });
+        return;
+      }
+      if (canPostRoom(me)) {
+        navigate('/post', { replace: true });
+        return;
+      }
+      if (!hasPendingLandlordApplication(me)) {
+        navigate('/become-landlord', { replace: true });
+        return;
+      }
+    } finally {
+      setPhase('ready');
+    }
   };
 
-  if (authLoading || !user) {
+  if (authLoading || !user || phase === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center pt-20 bg-slate-50 text-gray-500 text-sm">
         Đang tải...
@@ -35,22 +82,25 @@ export default function LandlordPendingPage() {
           <div className="text-5xl mb-4">⏳</div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">Đang chờ admin xác minh</h1>
           <p className="text-sm text-gray-600 mb-6">
-            Hồ sơ chủ phòng của bạn đã được gửi. Sau khi admin duyệt, bạn có thể đăng tin cho thuê. Quá trình có thể mất
-            vài giờ đến vài ngày làm việc.
+            Hồ sơ chủ nhà của bạn đã được gửi và đang chờ xác minh. Sau khi được duyệt, bạn có thể đăng tin cho thuê.
+            Thời gian xử lý có thể từ vài giờ đến vài ngày làm việc.
           </p>
           <button
             type="button"
             onClick={handleRecheck}
-            className="inline-flex items-center justify-center rounded-xl bg-blue-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors mb-4"
+            className="inline-flex items-center justify-center rounded-xl bg-blue-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors mb-3"
           >
             Kiểm tra lại trạng thái
           </button>
-          <p className="text-xs text-gray-400 mb-4">
-            Admin duyệt hồ sơ trên hệ thống nội bộ (API PATCH kèm mã người dùng của bạn).
+          <p className="text-sm text-gray-500 mb-4">
+            <Link to="/become-landlord" className="text-blue-600 font-medium hover:underline">
+              Cập nhật lại hồ sơ
+            </Link>
+            {' · '}
+            <Link to="/" className="text-blue-600 font-medium hover:underline">
+              Về trang chủ
+            </Link>
           </p>
-          <Link to="/" className="text-blue-600 text-sm font-medium hover:underline">
-            Về trang chủ
-          </Link>
         </div>
       </div>
     </div>

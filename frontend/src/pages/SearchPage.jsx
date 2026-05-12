@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import RoomFilter from '../components/rooms/RoomFilter';
 import RoomList from '../components/rooms/RoomList';
 import AISearchBar from '../components/home/AISearchBar';
 import { fetchRooms } from '../services/roomApi';
+import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
 const PRICE_RANGES = [
   { min: 0, max: 1000000 },
@@ -32,6 +33,48 @@ export default function SearchPage() {
   });
   const query = searchParams.get('q') || '';
   const city = searchParams.get('city') || '';
+
+  const [nearMe, setNearMe] = useState(null); // {latitude, longitude} | null
+  const [locationError, setLocationError] = useState('');
+  const { requestLocation, loading: locating } = useGeolocation();
+
+  const enableNearMe = async () => {
+    setLocationError('');
+    try {
+      const pos = await requestLocation();
+      setNearMe({ latitude: pos.latitude, longitude: pos.longitude });
+    } catch (err) {
+      setLocationError(err.message || 'Không lấy được vị trí.');
+    }
+  };
+
+  const disableNearMe = () => {
+    setNearMe(null);
+    setLocationError('');
+  };
+
+  // Tính khoảng cách & sắp theo gần nhất khi có toạ độ user.
+  const orderedRooms = useMemo(() => {
+    if (!nearMe) return rooms;
+    return rooms
+      .map((r) => ({
+        ...r,
+        _distanceKm:
+          r.latitude != null && r.longitude != null
+            ? haversineDistanceKm(nearMe.latitude, nearMe.longitude, r.latitude, r.longitude)
+            : Infinity,
+      }))
+      .sort((a, b) => a._distanceKm - b._distanceKm);
+  }, [rooms, nearMe]);
+
+  const roomsWithDistance = useMemo(() => {
+    if (!nearMe) return orderedRooms;
+    return orderedRooms.map((r) =>
+      Number.isFinite(r._distanceKm)
+        ? { ...r, distanceLabel: formatDistanceKm(r._distanceKm) }
+        : r,
+    );
+  }, [orderedRooms, nearMe]);
 
   useEffect(() => {
     const loadRooms = async () => {
@@ -93,7 +136,7 @@ export default function SearchPage() {
         </div>
       );
     }
-    return <RoomList rooms={rooms} loading={loading} totalCount={rooms.length} />;
+    return <RoomList rooms={roomsWithDistance} loading={loading} totalCount={roomsWithDistance.length} />;
   };
 
   return (
@@ -117,22 +160,57 @@ export default function SearchPage() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {query ? `Kết quả cho "${query}"` : city ? `Phòng trọ tại ${city}` : 'Tất cả phòng trọ'}
+                {nearMe
+                  ? 'Phòng gần bạn nhất'
+                  : query
+                    ? `Kết quả cho "${query}"`
+                    : city
+                      ? `Phòng trọ tại ${city}`
+                      : 'Tất cả phòng trọ'}
               </h1>
               {!loading && (
                 <p className="text-sm text-gray-500 mt-1">
-                  AI đề xuất <span className="font-medium text-blue-600">{rooms.length}</span> phòng phù hợp
+                  {nearMe ? 'Sắp xếp theo khoảng cách · ' : ''}
+                  <span className="font-medium text-blue-600">{roomsWithDistance.length}</span> phòng phù hợp
                 </p>
               )}
             </div>
-            {/* Mobile filter toggle */}
-            <button
-              onClick={() => setShowFilter(!showFilter)}
-              className="lg:hidden flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-            >
-              🔧 Bộ lọc
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {nearMe ? (
+                <button
+                  type="button"
+                  onClick={disableNearMe}
+                  className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-2 text-sm font-semibold hover:bg-emerald-100"
+                  title="Tắt lọc theo vị trí hiện tại"
+                >
+                  ✓ Đang dùng vị trí của bạn
+                  <span className="text-emerald-500">·</span>
+                  <span className="text-xs underline">Tắt</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={enableNearMe}
+                  disabled={locating}
+                  className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-100 disabled:opacity-60"
+                  title="Sắp xếp danh sách theo khoảng cách từ vị trí hiện tại"
+                >
+                  {locating ? '⏳ Đang lấy GPS...' : '📍 Phòng gần tôi'}
+                </button>
+              )}
+              <button
+                onClick={() => setShowFilter(!showFilter)}
+                className="lg:hidden flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                🔧 Bộ lọc
+              </button>
+            </div>
           </div>
+          {locationError && (
+            <p className="mt-3 text-sm bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2">
+              {locationError}
+            </p>
+          )}
         </div>
 
         {/* AI Analysis Banner */}

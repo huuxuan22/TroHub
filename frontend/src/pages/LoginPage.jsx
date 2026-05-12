@@ -32,8 +32,11 @@ export default function LoginPage() {
     try {
       const me = await login(form.email.trim(), form.password);
       const from = location.state?.from;
+      const isAdmin = String(me?.role).toLowerCase() === 'admin';
       if (typeof from === 'string' && from.startsWith('/')) {
         navigate(from, { replace: true });
+      } else if (isAdmin) {
+        navigate('/admin');
       } else if (canPostAndManageRooms(me)) {
         navigate('/manage');
       } else {

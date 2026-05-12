@@ -24,7 +24,8 @@ from app.routers.uploads import router as uploads_router
 from app.routers.users import router as users_router
 from app.routers.auth import router as auth_router
 from app.routers.landlord import router as landlord_router
-from app.routers.admin_landlord import router as admin_landlord_router
+from app.routers.admin import router as admin_router
+from app.routers.geocoding import router as geocoding_router
 from app.database import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -112,7 +113,7 @@ app.include_router(rooms_router)
 app.include_router(users_router)
 app.include_router(auth_router)
 app.include_router(landlord_router)
-app.include_router(admin_landlord_router)
+app.include_router(admin_router)
 app.include_router(messages_router)
 app.include_router(amenities_router)
 app.include_router(favorites_router)
@@ -120,6 +121,7 @@ app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(uploads_router)
 app.include_router(chat_router)
+app.include_router(geocoding_router)
 
 
 @app.get("/trohub/health")
