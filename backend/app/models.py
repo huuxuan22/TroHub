@@ -44,6 +44,15 @@ class CrawlStatus(str, Enum):
     FAILED = "failed"
 
 
+def _mysql_pep_enum(py_enum: type[Enum], sqlalchemy_name: str) -> SqlEnum:
+    """Alembic tạo ENUM MySQL theo tên hội viên (TENANT, ACTIVE, …); khớp với PEP-435 `.name`."""
+    return SqlEnum(
+        py_enum,
+        name=sqlalchemy_name,
+        values_callable=lambda cls: [m.name for m in cls],
+    )
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -51,9 +60,9 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(150))
     email: Mapped[str] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    role: Mapped[UserRole] = mapped_column(SqlEnum(UserRole), default=UserRole.TENANT)
+    role: Mapped[UserRole] = mapped_column(_mysql_pep_enum(UserRole, "userrole"), default=UserRole.TENANT)
     phone_number: Mapped[str | None] = mapped_column(String(20))
-    status: Mapped[UserStatus] = mapped_column(SqlEnum(UserStatus), default=UserStatus.ACTIVE)
+    status: Mapped[UserStatus] = mapped_column(_mysql_pep_enum(UserStatus, "userstatus"), default=UserStatus.ACTIVE)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     landlord_profile: Mapped["LandlordProfile | None"] = relationship(back_populates="user", uselist=False)
@@ -86,7 +95,7 @@ class Room(Base):
     address: Mapped[str] = mapped_column(String(500))
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
-    status: Mapped[RoomStatus] = mapped_column(SqlEnum(RoomStatus), default=RoomStatus.DRAFT)
+    status: Mapped[RoomStatus] = mapped_column(_mysql_pep_enum(RoomStatus, "roomstatus"), default=RoomStatus.DRAFT)
     source: Mapped[str] = mapped_column(String(100), default="owner")
     landlord_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -143,7 +152,7 @@ class Report(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"))
     reason: Mapped[str] = mapped_column(Text)
-    status: Mapped[ReportStatus] = mapped_column(SqlEnum(ReportStatus), default=ReportStatus.PENDING)
+    status: Mapped[ReportStatus] = mapped_column(_mysql_pep_enum(ReportStatus, "reportstatus"), default=ReportStatus.PENDING)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -194,5 +203,5 @@ class CrawlHistory(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     source_url: Mapped[str] = mapped_column(String(700))
-    status: Mapped[CrawlStatus] = mapped_column(SqlEnum(CrawlStatus), default=CrawlStatus.QUEUED)
+    status: Mapped[CrawlStatus] = mapped_column(_mysql_pep_enum(CrawlStatus, "crawlstatus"), default=CrawlStatus.QUEUED)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

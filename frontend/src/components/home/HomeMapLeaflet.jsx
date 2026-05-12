@@ -18,17 +18,23 @@ function makePriceIcon(price, selected) {
   const label = formatMarkerPrice(price);
   const border = selected ? '2px solid #2563eb' : '2px solid #fff';
   const shadow = selected ? '0 4px 14px rgba(37,99,235,0.35)' : '0 2px 10px rgba(0,0,0,0.18)';
+  // Đủ kích thước + iconAnchor để Leaflet nhận click (iconSize [0,0] khiến marker gần như không bấm được).
+  const w = 168;
+  const h = 52;
   return L.divIcon({
-    className: '',
+    className: 'leaflet-price-marker',
     html: `
-      <div style="display:flex;align-items:center;gap:6px;background:#fff;padding:6px 12px;border-radius:999px;
-        box-shadow:${shadow};border:${border};font-weight:600;font-size:13px;color:#0f172a;white-space:nowrap;
-        transform:translate(-50%,-100%);margin-top:-8px;font-family:system-ui,-apple-system,sans-serif;">
-        <span style="font-size:14px;line-height:1;">🛏</span>
-        <span>${label}</span>
+      <div style="width:${w}px;height:${h}px;display:flex;align-items:flex-start;justify-content:center;
+        pointer-events:auto;box-sizing:border-box;padding-top:2px;">
+        <div style="display:flex;align-items:center;gap:6px;background:#fff;padding:6px 12px;border-radius:999px;
+          box-shadow:${shadow};border:${border};font-weight:600;font-size:13px;color:#0f172a;white-space:nowrap;
+          font-family:system-ui,-apple-system,sans-serif;cursor:pointer;">
+          <span style="font-size:14px;line-height:1;">🛏</span>
+          <span>${label}</span>
+        </div>
       </div>`,
-    iconSize: [0, 0],
-    iconAnchor: [0, 0],
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
   });
 }
 

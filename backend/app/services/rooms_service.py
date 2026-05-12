@@ -2,10 +2,19 @@ from sqlalchemy import asc, desc, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
-from app.models import Room
+from app.models import Room, RoomStatus
 from app.schemas import RoomCreate, RoomUpdate
 from app.services.exceptions import NotFoundError
 from app.services.geocoding_service import has_valid_coordinates, resolve_coordinates
+
+
+def _to_domain_room_status(value):
+    """Schema RoomStatusSchema (draft, …) → models.RoomStatus."""
+    if isinstance(value, RoomStatus):
+        return value
+    if hasattr(value, "value"):
+        return RoomStatus(value.value)
+    return RoomStatus(value)
 
 
 def _apply_coordinates(room: Room, latitude, longitude, *, persist: bool) -> bool:
@@ -41,7 +50,8 @@ def _hydrate_room_coordinates(
 
 
 def create_room(db: Session, payload: RoomCreate) -> Room:
-    room_data = payload.model_dump()
+    room_data = payload.model_dump(mode="python", exclude={"status"})
+    room_data["status"] = _to_domain_room_status(payload.status)
     room_data["latitude"], room_data["longitude"] = resolve_coordinates(
         address=room_data.get("address", ""),
         latitude=room_data.get("latitude"),
@@ -85,7 +95,7 @@ def list_rooms(
     if max_price is not None:
         query = query.filter(Room.price <= max_price)
     if status:
-        query = query.filter(Room.status == status)
+        query = query.filter(Room.status == _to_domain_room_status(status))
     if room_type:
         query = query.filter(Room.room_type == room_type)
     if landlord_id is not None:
@@ -148,6 +158,9 @@ def update_room(db: Session, room_id: int, payload: RoomUpdate) -> Room:
             prefer_remote=True,
             force_lookup=address_changed and not provided_full_coordinates,
         )
+
+    if "status" in update_data:
+        update_data["status"] = _to_domain_room_status(update_data["status"])
 
     for key, value in update_data.items():
         setattr(room, key, value)

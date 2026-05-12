@@ -2,7 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas import RoomCreate, RoomOut, RoomStatusSchema, RoomUpdate
+from app.models import User, UserRole
+from app.schemas import RoomCreate, RoomCreateRequest, RoomOut, RoomStatusSchema, RoomUpdate
+from app.services.auth_service import (
+    assert_user_owns_room_or_admin,
+    ensure_verified_landlord_for_own_listing,
+    get_current_active_user,
+    require_verified_landlord_or_admin,
+)
 from app.services.exceptions import NotFoundError
 from app.services.rooms_service import (
     create_room as create_room_service,
@@ -16,8 +23,19 @@ router = APIRouter(prefix="/trohub/rooms", tags=["rooms"])
 
 
 @router.post("", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
-def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
-    return create_room_service(db=db, payload=payload)
+def create_room(
+    payload: RoomCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_verified_landlord_or_admin),
+):
+    if current_user.role == UserRole.ADMIN:
+        landlord_id = payload.landlord_id if payload.landlord_id is not None else current_user.id
+    else:
+        landlord_id = current_user.id
+    body = payload.model_dump()
+    body.pop("landlord_id", None)
+    internal = RoomCreate(**body, landlord_id=landlord_id)
+    return create_room_service(db=db, payload=internal)
 
 
 @router.get("", response_model=list[RoomOut])
@@ -61,17 +79,37 @@ def get_room(room_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{room_id}", response_model=RoomOut)
-def update_room(room_id: int, payload: RoomUpdate, db: Session = Depends(get_db)):
+def update_room(
+    room_id: int,
+    payload: RoomUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     try:
-        return update_room_service(db=db, room_id=room_id, payload=payload)
+        room = get_room_or_raise(db=db, room_id=room_id)
     except NotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    assert_user_owns_room_or_admin(current_user, room)
+    if current_user.role != UserRole.ADMIN:
+        ensure_verified_landlord_for_own_listing(current_user)
+        data = payload.model_dump(exclude_unset=True)
+        data.pop("landlord_id", None)
+        payload = RoomUpdate(**data)
+    return update_room_service(db=db, room_id=room_id, payload=payload)
 
 
 @router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_room(room_id: int, db: Session = Depends(get_db)):
+def delete_room(
+    room_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     try:
-        delete_room_service(db=db, room_id=room_id)
+        room = get_room_or_raise(db=db, room_id=room_id)
     except NotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    assert_user_owns_room_or_admin(current_user, room)
+    if current_user.role != UserRole.ADMIN:
+        ensure_verified_landlord_for_own_listing(current_user)
+    delete_room_service(db=db, room_id=room_id)
     return None

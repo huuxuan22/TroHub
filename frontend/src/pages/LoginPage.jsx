@@ -1,13 +1,27 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { canPostAndManageRooms } from '../utils/userRoles';
+import PasswordInput from '../components/common/PasswordInput';
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '', remember: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
+
+  useEffect(() => {
+    const st = location.state;
+    if (st?.fromRegister && st?.email) {
+      const email = String(st.email).trim();
+      setForm((prev) => ({ ...prev, email }));
+      setSuccessMsg('Đăng ký thành công. Vui lòng đăng nhập bằng email và mật khẩu bạn vừa tạo.');
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -16,8 +30,15 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      await login(form.email, form.password);
-      navigate('/');
+      const me = await login(form.email.trim(), form.password);
+      const from = location.state?.from;
+      if (typeof from === 'string' && from.startsWith('/')) {
+        navigate(from, { replace: true });
+      } else if (canPostAndManageRooms(me)) {
+        navigate('/manage');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       setError(err.message || 'Đăng nhập thất bại');
     } finally {
@@ -34,6 +55,11 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mb-6">Đăng nhập để đăng tin và quản lý phòng trọ của bạn.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {successMsg && (
+              <div className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-3 py-2">
+                {successMsg}
+              </div>
+            )}
             {error && (
               <div className="text-sm bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2">
                 {error}
@@ -52,14 +78,16 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Mật khẩu</label>
-              <input
-                type="password"
+              <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1.5">
+                Mật khẩu
+              </label>
+              <PasswordInput
+                id="login-password"
                 required
                 value={form.password}
                 onChange={(e) => update('password', e.target.value)}
                 placeholder="Nhập mật khẩu"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoComplete="current-password"
               />
             </div>
 

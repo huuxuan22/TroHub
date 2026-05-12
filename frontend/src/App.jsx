@@ -20,7 +20,11 @@ import PricingPage from './pages/PricingPage';
 import LandlordSupportPage from './pages/LandlordSupportPage';
 import GuidePage from './pages/GuidePage';
 import ContactPage from './pages/ContactPage';
+import BecomeLandlordPage from './pages/BecomeLandlordPage';
+import LandlordPendingPage from './pages/LandlordPendingPage';
 import NewsPage from './pages/NewsPage';
+import RequireAuth from './components/auth/RequireAuth';
+import VerifiedListingGate from './components/auth/VerifiedListingGate';
 import './index.css';
 
 function NotFoundPage() {
@@ -47,15 +51,52 @@ function AppShell() {
           <Route path="/" element={<HomePage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/room/:id" element={<RoomDetailPage />} />
-          <Route path="/post" element={<PostRoomPage />} />
-          <Route path="/manage-rooms" element={<ManageRoomsPage />} />
+          <Route
+            path="/post"
+            element={(
+              <VerifiedListingGate>
+                <PostRoomPage />
+              </VerifiedListingGate>
+            )}
+          />
+          <Route
+            path="/manage-rooms"
+            element={(
+              <VerifiedListingGate>
+                <ManageRoomsPage />
+              </VerifiedListingGate>
+            )}
+          />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/manage" element={<ManagePostsPage />} />
+          <Route
+            path="/manage"
+            element={(
+              <VerifiedListingGate>
+                <ManagePostsPage />
+              </VerifiedListingGate>
+            )}
+          />
+          <Route
+            path="/become-landlord"
+            element={(
+              <RequireAuth>
+                <BecomeLandlordPage />
+              </RequireAuth>
+            )}
+          />
+          <Route
+            path="/landlord-pending"
+            element={(
+              <RequireAuth>
+                <LandlordPendingPage />
+              </RequireAuth>
+            )}
+          />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/landlord-support" element={<LandlordSupportPage />} />
           <Route path="/guide" element={<GuidePage />} />

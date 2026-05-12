@@ -31,7 +31,17 @@ function parseDetail(detail) {
   if (!detail) return 'Yêu cầu thất bại';
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
-    return detail.map((e) => (typeof e === 'object' ? (e.msg || JSON.stringify(e)) : String(e))).join('; ');
+    return detail
+      .map((e) => {
+        if (typeof e !== 'object' || e === null) return String(e);
+        const loc = Array.isArray(e.loc) ? e.loc.filter((x) => x !== 'body').join(' › ') : '';
+        const msg = e.msg || e.message || e.type || JSON.stringify(e);
+        return loc ? `${loc}: ${msg}` : msg;
+      })
+      .join('; ');
+  }
+  if (typeof detail === 'object') {
+    return JSON.stringify(detail);
   }
   return String(detail);
 }
@@ -86,4 +96,20 @@ export async function fetchMe() {
     clearAuthSession();
     return null;
   }
+}
+
+/** Gọi server (nếu còn token) rồi luôn xóa token/user local — không ném lỗi ra ngoài. */
+export async function logoutSession() {
+  const token = getAccessToken();
+  if (token) {
+    try {
+      await fetch(`${API_BASE_URL}/trohub/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      // Mất mạng vẫn đăng xuất phía client
+    }
+  }
+  clearAuthSession();
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapPin, Search } from 'lucide-react';
 import HomeMapLeaflet from './HomeMapLeaflet';
@@ -48,6 +48,13 @@ export default function HomeMapExplorer() {
   const [budgetMax, setBudgetMax] = useState(30_000_000);
   const [selectedId, setSelectedId] = useState(null);
   const [mapPanUser, setMapPanUser] = useState(false);
+  const listScrollRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedId || !listScrollRef.current) return;
+    const el = listScrollRef.current.querySelector(`[data-map-room="${selectedId}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [selectedId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +95,11 @@ export default function HomeMapExplorer() {
     });
   }, [rooms, locationQuery, purpose, budgetMin, budgetMax]);
 
+  const selectedRoom = useMemo(
+    () => filtered.find((r) => r.id === selectedId) ?? null,
+    [filtered, selectedId],
+  );
+
   const exactLocationCount = useMemo(
     () => filtered.filter((room) => hasExactCoordinates(room)).length,
     [filtered],
@@ -125,7 +137,7 @@ export default function HomeMapExplorer() {
     <div className="flex flex-col lg:flex-row h-full min-h-0 bg-slate-100">
       {/* Sidebar */}
       <aside className="w-full lg:w-[400px] xl:w-[420px] flex-shrink-0 flex flex-col border-r border-slate-200 bg-white min-h-0 max-h-[42vh] lg:max-h-none lg:h-full shadow-sm z-10">
-          <div className="p-4 space-y-5 overflow-y-auto flex-1">
+          <div ref={listScrollRef} className="p-4 space-y-5 overflow-y-auto flex-1">
           {!loading && missingLocationCount > 0 && (
             <div className="text-xs bg-sky-50 border border-sky-200 text-sky-700 rounded-lg px-3 py-2">
               {missingLocationCount} tin chưa đủ địa chỉ hoặc tọa độ nên tạm chưa ghim lên bản đồ.
@@ -237,7 +249,7 @@ export default function HomeMapExplorer() {
             <ul className="space-y-3">
               {!loading &&
                 filtered.map((room) => (
-                  <li key={room.id}>
+                  <li key={room.id} data-map-room={room.id}>
                     <button
                       type="button"
                       onClick={() => selectRoomFromUser(room.id)}
@@ -299,6 +311,46 @@ export default function HomeMapExplorer() {
           onSelectRoom={selectRoomFromUser}
           panToSelection={mapPanUser}
         />
+        {selectedRoom && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center p-3 pb-4 md:justify-end md:items-end md:p-4">
+            <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-white/15 bg-slate-900/92 backdrop-blur-md shadow-xl overflow-hidden flex gap-3 p-3 text-left">
+              <div className="w-24 h-24 flex-shrink-0 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 overflow-hidden">
+                {selectedRoom.images?.[0] ? (
+                  <img src={selectedRoom.images[0]} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-3xl">🏠</div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col py-0.5">
+                <p className="font-semibold text-white text-sm leading-snug line-clamp-2">{selectedRoom.title}</p>
+                <p className="text-xs text-slate-400 line-clamp-2 mt-1">{selectedRoom.address}</p>
+                <p className="text-sm font-bold text-sky-300 mt-2">
+                  {formatListPrice(selectedRoom.price)}
+                  {selectedRoom.area > 0 && (
+                    <span className="font-normal text-slate-400">
+                      {' '}
+                      · {selectedRoom.area} m²
+                    </span>
+                  )}
+                </p>
+                <div className="mt-auto pt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/room/${selectedRoom.id}`)}
+                    className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2.5 transition-colors"
+                  >
+                    Xem chi tiết
+                  </button>
+                  {!hasExactCoordinates(selectedRoom) && (
+                    <span className="text-[10px] text-amber-200/90 self-center max-w-[7rem]" title={selectedRoom.address}>
+                      Tin chưa ghim được trên bản đồ
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

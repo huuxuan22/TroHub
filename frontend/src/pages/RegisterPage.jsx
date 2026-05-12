@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import PasswordInput from '../components/common/PasswordInput';
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -9,13 +10,12 @@ export default function RegisterPage() {
     phone: '',
     password: '',
     confirmPassword: '',
-    role: 'tenant',
     agree: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { register, login } = useAuth();
+  const { register } = useAuth();
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -29,15 +29,26 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
+      const email = form.email.trim();
+      const phone = form.phone.trim();
+      if (!phone) {
+        setError('Vui lòng nhập số điện thoại.');
+        setLoading(false);
+        return;
+      }
+      const digits = phone.replace(/\D/g, '');
+      if (digits.length < 9) {
+        setError('Số điện thoại phải có ít nhất 9 chữ số.');
+        setLoading(false);
+        return;
+      }
       await register({
-        full_name: form.fullName,
-        email: form.email,
-        phone_number: form.phone,
-        role: form.role,
+        full_name: form.fullName.trim(),
+        email,
+        phone_number: phone,
         password: form.password,
       });
-      await login(form.email, form.password);
-      navigate('/');
+      navigate('/login', { state: { fromRegister: true, email } });
     } catch (err) {
       setError(err.message || 'Đăng ký thất bại');
     } finally {
@@ -51,7 +62,9 @@ export default function RegisterPage() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
           <p className="text-sm font-semibold text-blue-600 mb-2">Bắt đầu với TroHub</p>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Đăng ký tài khoản</h1>
-          <p className="text-sm text-gray-500 mb-6">Tạo tài khoản để tìm phòng nhanh hoặc đăng tin cho thuê.</p>
+          <p className="text-sm text-gray-500 mb-6">
+            Tạo tài khoản để tìm phòng và lưu tin yêu thích. Số điện thoại là bắt buộc để liên hệ khi cần.
+          </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
@@ -59,27 +72,15 @@ export default function RegisterPage() {
                 {error}
               </div>
             )}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Họ và tên">
-                <input
-                  required
-                  value={form.fullName}
-                  onChange={(e) => update('fullName', e.target.value)}
-                  className={inputCls}
-                  placeholder="Nguyễn Văn A"
-                />
-              </Field>
-
-              <Field label="Số điện thoại">
-                <input
-                  required
-                  value={form.phone}
-                  onChange={(e) => update('phone', e.target.value)}
-                  className={inputCls}
-                  placeholder="0901234567"
-                />
-              </Field>
-            </div>
+            <Field label="Họ và tên">
+              <input
+                required
+                value={form.fullName}
+                onChange={(e) => update('fullName', e.target.value)}
+                className={inputCls}
+                placeholder="Nguyễn Văn A"
+              />
+            </Field>
 
             <Field label="Email">
               <input
@@ -92,40 +93,44 @@ export default function RegisterPage() {
               />
             </Field>
 
+            <Field label="Số điện thoại (bắt buộc)">
+              <input
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel"
+                required
+                minLength={9}
+                value={form.phone}
+                onChange={(e) => update('phone', e.target.value)}
+                className={inputCls}
+                placeholder="VD: 0901234567 hoặc +84901234567"
+              />
+              <p className="text-xs text-gray-500 mt-1">Ít nhất 9 chữ số (bỏ khoảng trắng sẽ được kiểm tra khi gửi).</p>
+            </Field>
+
             <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Mật khẩu">
-                <input
-                  type="password"
+              <Field label="Mật khẩu" htmlFor="reg-password">
+                <PasswordInput
+                  id="reg-password"
                   required
                   value={form.password}
                   onChange={(e) => update('password', e.target.value)}
-                  className={inputCls}
                   placeholder="Ít nhất 8 ký tự"
+                  autoComplete="new-password"
                 />
               </Field>
 
-              <Field label="Nhập lại mật khẩu">
-                <input
-                  type="password"
+              <Field label="Nhập lại mật khẩu" htmlFor="reg-password-confirm">
+                <PasswordInput
+                  id="reg-password-confirm"
                   required
                   value={form.confirmPassword}
                   onChange={(e) => update('confirmPassword', e.target.value)}
-                  className={inputCls}
                   placeholder="Nhập lại mật khẩu"
+                  autoComplete="new-password"
                 />
               </Field>
             </div>
-
-              <Field label="Bạn là">
-              <select
-                value={form.role}
-                onChange={(e) => update('role', e.target.value)}
-                className={inputCls}
-              >
-                <option value="tenant">Người thuê trọ</option>
-                <option value="landlord">Chủ phòng trọ</option>
-              </select>
-            </Field>
 
             <label className="inline-flex items-start gap-2 text-sm text-gray-600 cursor-pointer">
               <input
@@ -162,10 +167,12 @@ export default function RegisterPage() {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children, htmlFor }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1.5">
+        {label}
+      </label>
       {children}
     </div>
   );
