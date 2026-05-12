@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserRoleSchema(str, Enum):
@@ -40,15 +40,80 @@ class CrawlStatusSchema(str, Enum):
 
 
 class UserBase(BaseModel):
-    full_name: str
-    email: str
+    full_name: str = Field(..., min_length=1, max_length=150)
+    email: str = Field(..., min_length=3, max_length=255)
     role: UserRoleSchema = UserRoleSchema.tenant
-    phone_number: str | None = None
+    phone_number: str | None = Field(default=None, max_length=20)
     status: UserStatusSchema = UserStatusSchema.active
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> str:
+        if v is None:
+            raise ValueError("email is required")
+        s = str(v).strip().lower()
+        if not s:
+            raise ValueError("email is required")
+        return s
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def strip_full_name(cls, v: object) -> str:
+        if v is None:
+            return ""
+        return str(v).strip()
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def normalize_phone(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
 
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=8, max_length=256)
+
+
+class UserRegister(BaseModel):
+    """Đăng ký công khai — bắt buộc số điện thoại."""
+
+    full_name: str = Field(..., min_length=1, max_length=150)
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=8, max_length=256)
+    phone_number: str = Field(..., min_length=8, max_length=20)
+    role: UserRoleSchema = UserRoleSchema.tenant
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> str:
+        if v is None:
+            raise ValueError("email is required")
+        s = str(v).strip().lower()
+        if not s:
+            raise ValueError("email is required")
+        return s
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def strip_full_name(cls, v: object) -> str:
+        if v is None:
+            return ""
+        return str(v).strip()
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def normalize_phone_required(cls, v: object) -> str:
+        if v is None:
+            raise ValueError("Số điện thoại là bắt buộc")
+        s = str(v).strip()
+        if not s:
+            raise ValueError("Số điện thoại là bắt buộc")
+        digits = "".join(c for c in s if c.isdigit())
+        if len(digits) < 9:
+            raise ValueError("Số điện thoại phải có ít nhất 9 chữ số")
+        return s
 
 
 class UserUpdate(BaseModel):
@@ -58,13 +123,6 @@ class UserUpdate(BaseModel):
     phone_number: str | None = None
     status: UserStatusSchema | None = None
     password: str | None = None
-
-
-class UserOut(UserBase):
-    id: int
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class LoginRequest(BaseModel):
@@ -103,7 +161,23 @@ class LandlordProfileOut(LandlordProfileBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class RoomBase(BaseModel):
+class UserOut(UserBase):
+    id: int
+    created_at: datetime
+    landlord_profile: LandlordProfileOut | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LandlordApplicationIn(BaseModel):
+    """Đăng ký làm chủ phòng — không gửi user_id (lấy từ token)."""
+
+    business_name: str = Field(..., min_length=1, max_length=255)
+    national_id: str = Field(..., min_length=6, max_length=50)
+    business_license: str | None = Field(default=None, max_length=255)
+
+
+class RoomListingFields(BaseModel):
     title: str
     room_type: str = "Phòng trọ"
     description: str | None = None
@@ -114,12 +188,21 @@ class RoomBase(BaseModel):
     longitude: Decimal | None = None
     status: RoomStatusSchema = RoomStatusSchema.draft
     source: str = "owner"
-    landlord_id: int
     expires_at: datetime | None = None
+
+
+class RoomBase(RoomListingFields):
+    landlord_id: int
 
 
 class RoomCreate(RoomBase):
     pass
+
+
+class RoomCreateRequest(RoomListingFields):
+    """Phần body khi chủ nhà/admin tạo phòng; landlord_id do server gán (trừ khi là admin chỉ định)."""
+
+    landlord_id: int | None = None
 
 
 class RoomUpdate(BaseModel):

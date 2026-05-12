@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { canPostAndManageRooms } from '../../utils/userRoles';
 
-const NAV_LINKS = [
+const BASE_NAV_LINKS = [
   { label: 'Trang chủ', path: '/' },
   { label: 'Tìm phòng', path: '/search' },
-  { label: 'Đăng tin', path: '/post' },
-  { label: 'Quản lý phòng', path: '/manage-rooms' },
+  { label: 'Quản lý phòng', path: '/manage-rooms', landlordOnly: true },
   { label: 'Tin tức', path: '/news' },
   { label: 'Liên hệ', path: '/contact' },
 ];
@@ -18,6 +18,11 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
+  const navLinks = useMemo(() => {
+    const showLandlord = canPostAndManageRooms(user);
+    return BASE_NAV_LINKS.filter((link) => !link.landlordOnly || showLandlord);
+  }, [user]);
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
@@ -28,9 +33,10 @@ export default function Navbar() {
     setMenuOpen(false);
   }, [location]);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    setMenuOpen(false);
+    await logout();
+    navigate('/', { replace: true });
   };
 
   return (
@@ -52,7 +58,7 @@ export default function Navbar() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
@@ -68,45 +74,42 @@ export default function Navbar() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/post')}
-              className="hidden md:inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
-            >
-              <span>+</span>
-              Đăng tin
-            </button>
-
+          <div className="flex items-center gap-2 sm:gap-3">
             {user ? (
               <div className="hidden md:flex items-center gap-2">
-                <span className="text-sm text-gray-700">👤 {user.full_name}</span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/post')}
+                  className="inline-flex items-center gap-1.5 shrink-0 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  <span>+</span>
+                  Đăng tin
+                </button>
+                <span className="text-sm text-gray-700 max-w-[10rem] sm:max-w-[14rem] truncate" title={user.full_name}>
+                  👤 {user.full_name}
+                  {user.role === 'admin' && (
+                    <span className="ml-1.5 text-xs font-medium text-amber-700">(Admin)</span>
+                  )}
+                </span>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="text-sm text-gray-600 hover:text-red-600 transition-colors border border-gray-200 hover:border-red-300 rounded-lg px-3 py-2"
+                  className="text-sm text-gray-600 hover:text-red-600 transition-colors border border-gray-200 hover:border-red-300 rounded-lg px-3 py-2 shrink-0"
                 >
                   Đăng xuất
                 </button>
               </div>
             ) : (
-              <>
+              <div className="hidden md:flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => navigate('/login')}
-                  className="hidden md:flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-2"
+                  onClick={() => navigate('/login', { state: { from: location.pathname } })}
+                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-2"
                 >
                   <span>👤</span>
                   <span className="hidden lg:inline">Đăng nhập</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/register')}
-                  className="hidden md:inline-flex items-center text-sm font-semibold rounded-lg px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                >
-                  Đăng ký
-                </button>
-              </>
+              </div>
             )}
 
             <button
@@ -127,7 +130,7 @@ export default function Navbar() {
 
       <div className={`md:hidden transition-all duration-300 overflow-hidden ${menuOpen ? 'max-h-96' : 'max-h-0'}`}>
         <div className="bg-white border-t border-gray-100 px-4 py-3 space-y-1">
-          {NAV_LINKS.map((link) => (
+          {navLinks.map((link) => (
             <Link
               key={link.path}
               to={link.path}
@@ -142,6 +145,15 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+            {user && (
+              <button
+                type="button"
+                onClick={() => navigate('/post')}
+                className="w-full text-center text-sm font-semibold text-white bg-blue-600 py-2.5 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                + Đăng tin
+              </button>
+            )}
             {user ? (
               <button
                 type="button"
@@ -151,30 +163,14 @@ export default function Navbar() {
                 Đăng xuất
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => navigate('/login')}
-                  className="w-full text-center text-sm text-gray-600 border border-gray-200 py-2.5 rounded-lg"
-                >
-                  Đăng nhập
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/register')}
-                  className="w-full text-center text-sm font-semibold bg-blue-600 text-white py-2.5 rounded-lg"
-                >
-                  Đăng ký
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => navigate('/login', { state: { from: location.pathname } })}
+                className="w-full text-center text-sm text-gray-600 border border-gray-200 py-2.5 rounded-lg"
+              >
+                Đăng nhập
+              </button>
             )}
-            <button
-              type="button"
-              onClick={() => navigate('/post')}
-              className="w-full text-center text-sm font-semibold text-white bg-blue-600 py-2.5 rounded-lg"
-            >
-              Đăng tin
-            </button>
           </div>
         </div>
       </div>

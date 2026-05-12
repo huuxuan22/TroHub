@@ -1,13 +1,17 @@
 import asyncio
+import logging
 import os
+import re
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.routers.amenities import router as amenities_router
 from app.routers.chat import router as chat_router
@@ -19,14 +23,50 @@ from app.routers.rooms import router as rooms_router
 from app.routers.uploads import router as uploads_router
 from app.routers.users import router as users_router
 from app.routers.auth import router as auth_router
+from app.routers.landlord import router as landlord_router
+from app.routers.admin_landlord import router as admin_landlord_router
+from app.database import get_db
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 load_dotenv()
 
-_origins = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
-)
+# Nếu CORS_ORIGINS="" trong env, os.getenv(...) vẫn trả về chuỗi rỗng → không origin nào được phép → lỗi CORS trong trình duyệt.
+_default_cors = "http://localhost:3000,http://127.0.0.1:3000"
+_raw_cors = os.environ.get("CORS_ORIGINS")
+if _raw_cors is None or not str(_raw_cors).strip():
+    _origins = _default_cors
+else:
+    _origins = str(_raw_cors).strip()
 allow_origins = [o.strip() for o in _origins.split(",") if o.strip()]
+if not allow_origins:
+    allow_origins = [o.strip() for o in _default_cors.split(",") if o.strip()]
+
+# Dev: mọi cổng localhost / 127.0.0.1 / ::1 (regex bổ sung cho allow_origins)
+_dev_origin_regex = r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+_allow_origin_regex = (
+    _dev_origin_regex if os.getenv("CORS_USE_DEV_REGEX", "1").strip() not in ("0", "false", "no") else None
+)
+
+_log = logging.getLogger("trohub.api")
+
+
+def _cors_headers_for_request(request: Request) -> dict[str, str]:
+    """Gắn headers CORS khi origin hợp lệ (để lỗi 500 vẫn đọc được từ FE)."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return {}
+    if origin in allow_origins:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    if _allow_origin_regex and re.fullmatch(_allow_origin_regex, origin):
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
 
 
 def _upgrade_db_schema() -> None:
@@ -52,14 +92,27 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
+    allow_origin_regex=_allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    _log.exception("Unhandled error: %s", exc)
+    headers = _cors_headers_for_request(request)
+    expose = os.getenv("DEBUG", "").strip().lower() in ("1", "true", "yes")
+    body = {"detail": str(exc)} if expose else {"detail": "Internal server error"}
+    return JSONResponse(status_code=500, content=body, headers=headers)
+
+
 app.include_router(rooms_router)
 app.include_router(users_router)
 app.include_router(auth_router)
+app.include_router(landlord_router)
+app.include_router(admin_landlord_router)
 app.include_router(messages_router)
 app.include_router(amenities_router)
 app.include_router(favorites_router)
@@ -72,3 +125,10 @@ app.include_router(chat_router)
 @app.get("/trohub/health")
 async def health_check():
     return {"status": "ok", "service": "backend"}
+
+
+@app.get("/trohub/health/database")
+def health_database(db: Session = Depends(get_db)):
+    """Kiểm tra nhanh kết nối MySQL (dùng khi đăng ký trả 5xx)."""
+    db.execute(text("SELECT 1"))
+    return {"status": "ok", "database": "connected"}

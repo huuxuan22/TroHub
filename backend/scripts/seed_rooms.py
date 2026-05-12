@@ -10,7 +10,7 @@ from sqlalchemy import select
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
-from app.models import Room, RoomStatus, User, UserRole, UserStatus
+from app.models import LandlordProfile, Room, RoomStatus, User, UserRole, UserStatus
 
 SEED_PASSWORD_HASH = "seed-data-not-for-login"
 
@@ -121,13 +121,31 @@ def get_or_create_landlord(db, spec: dict) -> User:
         )
         db.add(user)
         db.flush()
+        _ensure_seed_landlord_profile(db, user)
         return user
 
     user.full_name = spec["full_name"]
     user.phone_number = spec["phone_number"]
     user.role = UserRole.LANDLORD
     user.status = UserStatus.ACTIVE
+    _ensure_seed_landlord_profile(db, user)
     return user
+
+
+def _ensure_seed_landlord_profile(db, user: User) -> None:
+    existing = db.execute(select(LandlordProfile).where(LandlordProfile.user_id == user.id)).scalar_one_or_none()
+    if existing is None:
+        db.add(
+            LandlordProfile(
+                user_id=user.id,
+                business_name=user.full_name,
+                national_id="SEED",
+                business_license=None,
+                is_verified=True,
+            )
+        )
+    else:
+        existing.is_verified = True
 
 
 def upsert_room(db, spec: dict, landlord_id: int) -> None:

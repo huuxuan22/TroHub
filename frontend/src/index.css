@@ -1,3 +1,9 @@
+/* Custom map markers: không nền/tr viền để vùng click đúng khối HTML */
+.leaflet-price-marker.leaflet-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -1,9 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
-  clearAuthSession,
   fetchMe,
   getStoredUser,
   login as apiLogin,
+  logoutSession,
   register as apiRegister,
 } from '../services/authApi';
 
@@ -28,8 +28,8 @@ export function AuthProvider({ children }) {
     return me;
   }, []);
 
-  const logout = useCallback(() => {
-    clearAuthSession();
+  const logout = useCallback(async () => {
+    await logoutSession();
     setUser(null);
   }, []);
 

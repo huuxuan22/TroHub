@@ -8,7 +8,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import Room, User, UserRole, UserStatus
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -46,3 +46,72 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if not user:
         raise credentials_error
     return user
+
+
+def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.status != UserStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is not active",
+        )
+    return current_user
+
+
+def require_roles(*allowed: UserRole):
+    def _dep(user: User = Depends(get_current_active_user)) -> User:
+        if user.role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions for this operation",
+            )
+        return user
+
+    return _dep
+
+
+require_landlord_or_admin = require_roles(UserRole.LANDLORD, UserRole.ADMIN)
+
+
+def require_verified_landlord_or_admin(user: User = Depends(get_current_active_user)) -> User:
+    """Chỉ admin hoặc chủ phòng đã được admin xác minh (landlord_profile.is_verified)."""
+    if user.role == UserRole.ADMIN:
+        return user
+    if user.role != UserRole.LANDLORD:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cần tài khoản chủ phòng đã được xác minh để thực hiện thao tác này.",
+        )
+    prof = user.landlord_profile
+    if prof is None or not prof.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản chủ phòng chưa được admin xác minh. Vui lòng hoàn tất hồ sơ và chờ duyệt.",
+        )
+    return user
+
+
+def ensure_verified_landlord_for_own_listing(user: User) -> None:
+    """Dùng sau khi đã xác định user sở hữu tin: chặn chủ phòng chưa duyệt."""
+    if user.role == UserRole.ADMIN:
+        return
+    if user.role != UserRole.LANDLORD:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Không có quyền thao tác tin đăng.",
+        )
+    prof = user.landlord_profile
+    if prof is None or not prof.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản chủ phòng chưa được admin xác minh.",
+        )
+
+
+def assert_user_owns_room_or_admin(user: User, room: Room) -> None:
+    if user.role == UserRole.ADMIN:
+        return
+    if room.landlord_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only modify your own listings",
+        )
