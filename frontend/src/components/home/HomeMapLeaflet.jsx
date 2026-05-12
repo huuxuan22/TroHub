@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
+import { Circle, MapContainer, Marker, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { DEFAULT_MAP_CENTER, getRoomLatLng } from '../../services/roomApi';
@@ -38,9 +38,10 @@ function makePriceIcon(price, selected) {
   });
 }
 
-function FitBounds({ points }) {
+function FitBounds({ points, skip }) {
   const map = useMap();
   useEffect(() => {
+    if (skip) return;
     if (!points.length) return;
     if (points.length === 1) {
       map.setView(points[0], 13);
@@ -48,9 +49,31 @@ function FitBounds({ points }) {
     }
     const bounds = L.latLngBounds(points);
     map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14 });
-  }, [map, points]);
+  }, [map, points, skip]);
   return null;
 }
+
+function FlyToUserLocation({ location }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!location) return;
+    map.flyTo([location.latitude, location.longitude], 15, { duration: 0.6 });
+  }, [map, location?.latitude, location?.longitude]);
+  return null;
+}
+
+const USER_LOCATION_ICON = L.divIcon({
+  className: 'leaflet-user-location-marker',
+  html: `
+    <div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
+      <span style="position:absolute;inset:0;border-radius:9999px;background:#2563eb;opacity:0.25;animation:trohub-pulse 1.6s ease-out infinite;"></span>
+      <span style="position:relative;width:14px;height:14px;border-radius:9999px;background:#2563eb;box-shadow:0 0 0 3px #fff,0 2px 6px rgba(37,99,235,0.5);"></span>
+    </div>
+    <style>@keyframes trohub-pulse { 0% { transform: scale(0.6); opacity: 0.6; } 100% { transform: scale(2.6); opacity: 0; } }</style>
+  `,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
 
 function FlyToSelected({ room, center, enabled }) {
   const map = useMap();
@@ -82,7 +105,13 @@ function RoomMarker({ room, selected, onSelect }) {
   );
 }
 
-export default function HomeMapLeaflet({ rooms, selectedId, onSelectRoom, panToSelection }) {
+export default function HomeMapLeaflet({
+  rooms,
+  selectedId,
+  onSelectRoom,
+  panToSelection,
+  userLocation,
+}) {
   const mappableRooms = useMemo(
     () => rooms.filter((room) => getRoomLatLng(room)),
     [rooms],
@@ -111,12 +140,34 @@ export default function HomeMapLeaflet({ rooms, selectedId, onSelectRoom, panToS
           maxZoom={19}
           opacity={0.55}
         />
-        <FitBounds points={points.filter(Boolean)} />
+        {/* Khi đã có vị trí user thì ưu tiên flyTo, không fit bounds nữa. */}
+        <FitBounds points={points.filter(Boolean)} skip={Boolean(userLocation)} />
         <FlyToSelected
           room={selectedRoom}
           center={DEFAULT_MAP_CENTER}
           enabled={Boolean(panToSelection && selectedRoom)}
         />
+        <FlyToUserLocation location={userLocation} />
+
+        {userLocation && (
+          <>
+            <Circle
+              center={[userLocation.latitude, userLocation.longitude]}
+              radius={Math.max(userLocation.accuracy || 50, 30)}
+              pathOptions={{ color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 0.12, weight: 1 }}
+            />
+            <Marker
+              position={[userLocation.latitude, userLocation.longitude]}
+              icon={USER_LOCATION_ICON}
+              zIndexOffset={2000}
+            >
+              <Tooltip direction="top" offset={[0, -10]} permanent>
+                <span className="text-xs font-semibold text-blue-700">📍 Vị trí của bạn</span>
+              </Tooltip>
+            </Marker>
+          </>
+        )}
+
         {mappableRooms.map((room) => (
           <RoomMarker
             key={room.id}
@@ -126,7 +177,7 @@ export default function HomeMapLeaflet({ rooms, selectedId, onSelectRoom, panToS
           />
         ))}
       </MapContainer>
-      {!hasMapData && (
+      {!hasMapData && !userLocation && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900/35 backdrop-blur-[1px] px-6 text-center">
           <div className="max-w-sm rounded-2xl bg-white/95 px-4 py-3 text-sm text-slate-700 shadow-lg">
             Chưa có tin nào đủ dữ liệu vị trí để hiển thị trên bản đồ.

@@ -141,11 +141,11 @@ def _ensure_seed_landlord_profile(db, user: User) -> None:
                 business_name=user.full_name,
                 national_id="SEED",
                 business_license=None,
-                is_verified=True,
+                is_verified=1,
             )
         )
     else:
-        existing.is_verified = True
+        existing.is_verified = 1
 
 
 def upsert_room(db, spec: dict, landlord_id: int) -> None:

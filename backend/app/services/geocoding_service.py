@@ -163,3 +163,85 @@ def resolve_coordinates(
 
 def has_valid_coordinates(latitude: object, longitude: object) -> bool:
     return _has_coordinates(latitude, longitude)
+
+
+@lru_cache(maxsize=512)
+def reverse_geocode(latitude: str, longitude: str) -> dict | None:
+    """Đổi lat/lng (string để cache hoạt động) thành địa chỉ qua Nominatim.
+
+    Trả về dict {address, display_name, latitude, longitude, city?, district?} hoặc None.
+    """
+    lat = _sanitize_coordinate(latitude, 90)
+    lng = _sanitize_coordinate(longitude, 180)
+    if lat is None or lng is None:
+        return None
+    if os.getenv("GEOCODING_ENABLED", "true").strip().lower() in {"0", "false", "no", "off"}:
+        return None
+
+    base_url = os.getenv("GEOCODING_REVERSE_URL", "https://nominatim.openstreetmap.org/reverse").strip()
+    user_agent = os.getenv("GEOCODING_USER_AGENT", "TroHub/1.0 geocoder").strip() or "TroHub/1.0 geocoder"
+    timeout_seconds = float(os.getenv("GEOCODING_TIMEOUT_SECONDS", "4").strip() or "4")
+
+    params = urlencode(
+        {
+            "lat": str(lat),
+            "lon": str(lng),
+            "format": "jsonv2",
+            "addressdetails": "1",
+            "accept-language": "vi",
+            "zoom": "18",
+        }
+    )
+    request = Request(
+        f"{base_url}?{params}",
+        headers={
+            "User-Agent": user_agent,
+            "Accept": "application/json",
+            "Accept-Language": "vi",
+        },
+    )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
+        LOGGER.warning("Reverse geocoding failed for %s,%s: %s", lat, lng, exc)
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    address_parts = payload.get("address") or {}
+    display_name = payload.get("display_name") or ""
+
+    # Trả về địa chỉ dạng "Số nhà Đường, Phường, Quận, Thành phố" — bỏ "Việt Nam" + mã ZIP.
+    keys_in_order = [
+        "house_number",
+        "road",
+        "suburb",
+        "neighbourhood",
+        "village",
+        "town",
+        "city_district",
+        "district",
+        "city",
+        "state",
+    ]
+    pieces: list[str] = []
+    seen: set[str] = set()
+    for key in keys_in_order:
+        value = address_parts.get(key)
+        if value and value not in seen:
+            seen.add(value)
+            pieces.append(value)
+    short_address = ", ".join(pieces) or display_name
+
+    return {
+        "latitude": str(lat),
+        "longitude": str(lng),
+        "address": short_address,
+        "display_name": display_name,
+        "city": address_parts.get("city")
+        or address_parts.get("town")
+        or address_parts.get("state"),
+        "district": address_parts.get("city_district") or address_parts.get("district"),
+    }

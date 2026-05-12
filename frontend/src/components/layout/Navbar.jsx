@@ -77,14 +77,30 @@ export default function Navbar() {
           <div className="flex items-center gap-2 sm:gap-3">
             {user ? (
               <div className="hidden md:flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate('/post')}
-                  className="inline-flex items-center gap-1.5 shrink-0 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
-                >
-                  <span>+</span>
-                  Đăng tin
-                </button>
+                {user.role === 'admin' ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/admin')}
+                    className="inline-flex items-center gap-1.5 shrink-0 bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    title="Trang quản trị admin"
+                  >
+                    🛠️ Quản trị
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/post')}
+                    className="inline-flex items-center gap-1.5 shrink-0 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    title={
+                      canPostAndManageRooms(user)
+                        ? 'Đăng tin cho thuê'
+                        : 'Đăng tin cho thuê (cần hồ sơ chủ phòng được duyệt)'
+                    }
+                  >
+                    <span>+</span>
+                    Đăng tin
+                  </button>
+                )}
                 <span className="text-sm text-gray-700 max-w-[10rem] sm:max-w-[14rem] truncate" title={user.full_name}>
                   👤 {user.full_name}
                   {user.role === 'admin' && (
@@ -145,7 +161,16 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
-            {user && (
+            {user && user.role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => navigate('/admin')}
+                className="w-full text-center text-sm font-semibold text-white bg-amber-500 py-2.5 rounded-lg hover:bg-amber-600 transition-colors"
+              >
+                🛠️ Trang quản trị
+              </button>
+            )}
+            {user && user.role !== 'admin' && (
               <button
                 type="button"
                 onClick={() => navigate('/post')}

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { MapPin, Search } from 'lucide-react';
 import HomeMapLeaflet from './HomeMapLeaflet';
 import { fetchRooms, hasExactCoordinates } from '../../services/roomApi';
+import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../../utils/useGeolocation';
 
 const BUDGET_MAX = 50_000_000;
 const BUDGET_STEP = 500_000;
@@ -48,6 +49,9 @@ export default function HomeMapExplorer() {
   const [budgetMax, setBudgetMax] = useState(30_000_000);
   const [selectedId, setSelectedId] = useState(null);
   const [mapPanUser, setMapPanUser] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationError, setLocationError] = useState('');
+  const { requestLocation, loading: locating } = useGeolocation();
   const listScrollRef = useRef(null);
 
   useEffect(() => {
@@ -83,7 +87,7 @@ export default function HomeMapExplorer() {
 
   const filtered = useMemo(() => {
     const q = locationQuery.trim().toLowerCase();
-    return rooms.filter((r) => {
+    const base = rooms.filter((r) => {
       if (purpose === 'stays' && r.type !== 'Phòng trọ') return false;
       if (purpose === 'business' && r.type === 'Phòng trọ') return false;
       if (r.price < budgetMin || r.price > budgetMax) return false;
@@ -93,7 +97,33 @@ export default function HomeMapExplorer() {
       }
       return true;
     });
-  }, [rooms, locationQuery, purpose, budgetMin, budgetMax]);
+    if (!userLocation) return base;
+    return base
+      .map((r) => {
+        const km =
+          r.latitude != null && r.longitude != null
+            ? haversineDistanceKm(userLocation.latitude, userLocation.longitude, r.latitude, r.longitude)
+            : Infinity;
+        return { ...r, _distanceKm: km, distanceLabel: Number.isFinite(km) ? formatDistanceKm(km) : '' };
+      })
+      .sort((a, b) => a._distanceKm - b._distanceKm);
+  }, [rooms, locationQuery, purpose, budgetMin, budgetMax, userLocation]);
+
+  const handleUseMyLocation = async () => {
+    setLocationError('');
+    try {
+      const pos = await requestLocation();
+      setUserLocation(pos);
+      setMapPanUser(false); // không pan tới room đã chọn, để map tự bay tới user
+    } catch (err) {
+      setLocationError(err.message || 'Không lấy được vị trí.');
+    }
+  };
+
+  const clearUserLocation = () => {
+    setUserLocation(null);
+    setLocationError('');
+  };
 
   const selectedRoom = useMemo(
     () => filtered.find((r) => r.id === selectedId) ?? null,
@@ -158,6 +188,35 @@ export default function HomeMapExplorer() {
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow"
               />
             </div>
+            {userLocation ? (
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">
+                <span className="truncate">
+                  ✓ Vị trí của bạn (±{Math.round(userLocation.accuracy || 0)} m) · sắp xếp theo gần nhất
+                </span>
+                <button
+                  type="button"
+                  onClick={clearUserLocation}
+                  className="font-semibold underline hover:no-underline shrink-0"
+                >
+                  Tắt
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleUseMyLocation}
+                disabled={locating}
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-100 disabled:opacity-60"
+                title="Lấy GPS hiện tại và sắp xếp các phòng theo khoảng cách"
+              >
+                {locating ? '⏳ Đang định vị...' : '📍 Lấy vị trí của tôi'}
+              </button>
+            )}
+            {locationError && (
+              <p className="mt-2 text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2">
+                {locationError}
+              </p>
+            )}
           </div>
 
           <div>
@@ -278,7 +337,14 @@ export default function HomeMapExplorer() {
                             </span>
                           )}
                         </p>
-                        <p className="text-[11px] text-slate-400 mt-auto">{formatRelativePosted(room.postedAt)}</p>
+                        <div className="flex items-center gap-2 mt-auto">
+                          <p className="text-[11px] text-slate-400">{formatRelativePosted(room.postedAt)}</p>
+                          {room.distanceLabel && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full">
+                              🧭 {room.distanceLabel}
+                            </span>
+                          )}
+                        </div>
                         <span
                           className="mt-1 text-xs font-medium text-blue-600 hover:underline"
                           onClick={(e) => {
@@ -310,6 +376,7 @@ export default function HomeMapExplorer() {
           selectedId={selectedId}
           onSelectRoom={selectRoomFromUser}
           panToSelection={mapPanUser}
+          userLocation={userLocation}
         />
         {selectedRoom && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center p-3 pb-4 md:justify-end md:items-end md:p-4">

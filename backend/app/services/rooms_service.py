@@ -1,5 +1,5 @@
 from sqlalchemy import asc, desc, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.models import Room, RoomStatus
@@ -78,7 +78,7 @@ def list_rooms(
     sort_by: str = "created_at",
     sort_order: str = "desc",
 ) -> list[Room]:
-    query = db.query(Room)
+    query = db.query(Room).options(selectinload(Room.images))
 
     if keyword:
         keyword_like = f"%{keyword.strip()}%"
@@ -117,7 +117,12 @@ def list_rooms(
 
 
 def get_room_or_raise(db: Session, room_id: int) -> Room:
-    room = db.query(Room).filter(Room.id == room_id).first()
+    room = (
+        db.query(Room)
+        .options(selectinload(Room.images))
+        .filter(Room.id == room_id)
+        .first()
+    )
     if not room:
         raise NotFoundError("Room not found")
     if _hydrate_room_coordinates(room, prefer_remote=True, persist=True):

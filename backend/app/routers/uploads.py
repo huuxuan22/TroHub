@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from app.services.minio_storage import upload_image
+from app.services.minio_storage import storage, upload_image
 
 router = APIRouter(prefix="/trohub/uploads", tags=["uploads"])
 
@@ -22,3 +22,23 @@ async def upload_image_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/health")
+def upload_health():
+    """Kiểm tra nhanh kết nối MinIO và trạng thái bucket — tiện debug khi ảnh không hiển thị."""
+    info: dict = {
+        "bucket": storage.bucket_name,
+        "endpoint": storage.public_endpoint,
+        "secure": storage.secure,
+        "auto_public": storage.auto_public,
+    }
+    try:
+        storage.ensure_bucket()
+        info["status"] = "ok"
+        info["bucket_exists"] = True
+    except Exception as exc:
+        info["status"] = "error"
+        info["error"] = str(exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=info)
+    return info

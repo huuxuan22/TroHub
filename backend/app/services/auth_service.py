@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Room, User, UserRole, UserStatus
@@ -42,7 +42,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except (JWTError, ValueError):
         raise credentials_error
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .options(joinedload(User.landlord_profile))
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise credentials_error
     return user
@@ -73,25 +78,25 @@ require_landlord_or_admin = require_roles(UserRole.LANDLORD, UserRole.ADMIN)
 
 
 def require_verified_landlord_or_admin(user: User = Depends(get_current_active_user)) -> User:
-    """Chỉ admin hoặc chủ phòng đã được admin xác minh (landlord_profile.is_verified)."""
+    """Chỉ admin hoặc chủ nhà: role landlord VÀ hồ sơ is_verified = 1 mới được tạo tin (POST /rooms)."""
     if user.role == UserRole.ADMIN:
         return user
     if user.role != UserRole.LANDLORD:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cần tài khoản chủ phòng đã được xác minh để thực hiện thao tác này.",
+            detail="Cần tài khoản chủ nhà đã được xác minh để thực hiện thao tác này.",
         )
     prof = user.landlord_profile
-    if prof is None or not prof.is_verified:
+    if prof is None or prof.is_verified != 1:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản chủ phòng chưa được admin xác minh. Vui lòng hoàn tất hồ sơ và chờ duyệt.",
+            detail="Tài khoản chủ nhà chưa được admin xác minh. Vui lòng hoàn tất hồ sơ và chờ duyệt.",
         )
     return user
 
 
 def ensure_verified_landlord_for_own_listing(user: User) -> None:
-    """Dùng sau khi đã xác định user sở hữu tin: chặn chủ phòng chưa duyệt."""
+    """Dùng sau khi đã xác định user sở hữu tin: chặn chủ nhà chưa duyệt."""
     if user.role == UserRole.ADMIN:
         return
     if user.role != UserRole.LANDLORD:
@@ -100,10 +105,10 @@ def ensure_verified_landlord_for_own_listing(user: User) -> None:
             detail="Không có quyền thao tác tin đăng.",
         )
     prof = user.landlord_profile
-    if prof is None or not prof.is_verified:
+    if prof is None or prof.is_verified != 1:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản chủ phòng chưa được admin xác minh.",
+            detail="Tài khoản chủ nhà chưa được admin xác minh.",
         )
 
 

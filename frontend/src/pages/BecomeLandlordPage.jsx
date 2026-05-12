@@ -1,12 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { canPostRoom, hasPendingLandlordApplication } from '../utils/userRoles';
 import { submitLandlordApplication } from '../services/landlordApi';
 
+/**
+ * Gửi / cập nhật hồ sơ chủ nhà (is_verified = 0). Đã duyệt (1) hoặc đang chờ → chuyển đúng trang.
+ */
 export default function BecomeLandlordPage() {
   const { user, authLoading, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const userRef = useRef(user);
+  userRef.current = user;
   const [form, setForm] = useState({
     business_name: '',
     national_id: '',
@@ -14,26 +19,68 @@ export default function BecomeLandlordPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pageReady, setPageReady] = useState(false);
 
   useEffect(() => {
-    if (authLoading || !user) return;
-    if (canPostRoom(user)) {
-      navigate('/post', { replace: true });
+    if (authLoading) return;
+    if (!user) {
+      setPageReady(false);
       return;
     }
-    if (hasPendingLandlordApplication(user)) {
-      navigate('/landlord-pending', { replace: true });
-      return;
-    }
-    const p = user.landlord_profile;
-    if (p) {
-      setForm({
-        business_name: p.business_name || '',
-        national_id: p.national_id || '',
-        business_license: p.business_license || '',
-      });
-    }
-  }, [authLoading, user, navigate]);
+    let cancelled = false;
+    setPageReady(false);
+    (async () => {
+      try {
+        const me = await refreshUser();
+        if (cancelled || !me) {
+          if (!cancelled && !me) {
+            navigate('/login', { replace: true, state: { from: '/become-landlord' } });
+          }
+          return;
+        }
+        if (canPostRoom(me)) {
+          navigate('/post', { replace: true });
+          return;
+        }
+        if (hasPendingLandlordApplication(me)) {
+          navigate('/landlord-pending', { replace: true });
+          return;
+        }
+        const p = me.landlord_profile;
+        if (p) {
+          setForm({
+            business_name: p.business_name || '',
+            national_id: p.national_id || '',
+            business_license: p.business_license || '',
+          });
+        }
+        setPageReady(true);
+      } catch {
+        if (cancelled) return;
+        const u = userRef.current;
+        if (u && canPostRoom(u)) {
+          navigate('/post', { replace: true });
+          return;
+        }
+        if (u && hasPendingLandlordApplication(u)) {
+          navigate('/landlord-pending', { replace: true });
+          return;
+        }
+        const p = u?.landlord_profile;
+        if (p) {
+          setForm({
+            business_name: p.business_name || '',
+            national_id: p.national_id || '',
+            business_license: p.business_license || '',
+          });
+        }
+        setPageReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user?.id, refreshUser, navigate]);
 
   const update = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
 
@@ -52,7 +99,7 @@ export default function BecomeLandlordPage() {
     }
   };
 
-  if (authLoading || !user) {
+  if (authLoading || !user || !pageReady) {
     return (
       <div className="min-h-screen flex items-center justify-center pt-20 bg-slate-50 text-gray-500 text-sm">
         Đang tải...
@@ -64,10 +111,11 @@ export default function BecomeLandlordPage() {
     <div className="min-h-screen bg-slate-50 pt-20 pb-12 px-4">
       <div className="max-w-lg mx-auto">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
-          <p className="text-sm font-semibold text-blue-600 mb-2">Đăng ký làm chủ phòng</p>
+          <p className="text-sm font-semibold text-blue-600 mb-2">Đăng ký làm chủ nhà</p>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Bổ sung thông tin chủ nhà</h1>
           <p className="text-sm text-gray-500 mb-6">
-            Sau khi gửi, tài khoản của bạn sẽ chờ admin xác minh. Khi được duyệt, bạn có thể đăng tin cho thuê.
+            Sau khi gửi, hồ sơ của bạn chuyển sang trạng thái chờ admin xác minh. Khi được duyệt, bạn có thể đăng tin cho
+            thuê và quản lý phòng trên TroHub.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -116,6 +164,10 @@ export default function BecomeLandlordPage() {
           </form>
 
           <p className="text-sm text-gray-600 mt-5 text-center">
+            <Link to="/landlord-pending" className="text-blue-600 font-medium hover:underline">
+              Đã gửi hồ sơ? Xem trạng thái chờ duyệt
+            </Link>
+            {' · '}
             <Link to="/" className="text-blue-600 font-medium hover:underline">
               Về trang chủ
             </Link>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
@@ -25,6 +25,13 @@ import LandlordPendingPage from './pages/LandlordPendingPage';
 import NewsPage from './pages/NewsPage';
 import RequireAuth from './components/auth/RequireAuth';
 import VerifiedListingGate from './components/auth/VerifiedListingGate';
+import RequireAdmin from './components/auth/RequireAdmin';
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminOverviewPage from './pages/admin/AdminOverviewPage';
+import AdminLandlordsPage from './pages/admin/AdminLandlordsPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminRoomsPage from './pages/admin/AdminRoomsPage';
+import AdminReportsPage from './pages/admin/AdminReportsPage';
 import './index.css';
 
 function NotFoundPage() {
@@ -43,6 +50,10 @@ function NotFoundPage() {
 }
 
 function AppShell() {
+  // Khu vực admin chỉ giữ Navbar, ẩn Footer + ChatWidget cho gọn dashboard.
+  const location = useLocation();
+  const isAdminArea = location.pathname.startsWith('/admin');
+
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
@@ -102,11 +113,28 @@ function AppShell() {
           <Route path="/guide" element={<GuidePage />} />
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/news" element={<NewsPage />} />
+
+          {/* Admin area */}
+          <Route
+            path="/admin"
+            element={(
+              <RequireAdmin>
+                <AdminLayout />
+              </RequireAdmin>
+            )}
+          >
+            <Route index element={<AdminOverviewPage />} />
+            <Route path="landlords" element={<AdminLandlordsPage />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="rooms" element={<AdminRoomsPage />} />
+            <Route path="reports" element={<AdminReportsPage />} />
+          </Route>
+
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </div>
-      <Footer />
-      <ChatWidget />
+      {!isAdminArea && <Footer />}
+      {!isAdminArea && <ChatWidget />}
     </div>
   );
 }
