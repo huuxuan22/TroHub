@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import RoomFilter from '../components/rooms/RoomFilter';
 import RoomList from '../components/rooms/RoomList';
 import AISearchBar from '../components/home/AISearchBar';
+import Pagination from '../components/common/Pagination';
 import { fetchRooms } from '../services/roomApi';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
@@ -15,12 +16,17 @@ const PRICE_RANGES = [
   { min: 10000000, max: null },
 ];
 
+const PAGE_SIZE = 6;
+
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
   const [rooms, setRooms] = useState([]);
+  const [totalServer, setTotalServer] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showFilter, setShowFilter] = useState(false);
+  const [page, setPage] = useState(1);
+  const resultsTopRef = useRef(null);
   const [filters, setFilters] = useState({
     type: '',
     city: '',
@@ -91,12 +97,13 @@ export default function SearchPage() {
         };
         const sortParams = sortByMap[filters.sortBy] || sortByMap.newest;
 
-        const { rooms: fetched } = await fetchRooms({
+        const { rooms: fetched, total } = await fetchRooms({
           keyword,
           min_price: range?.min,
           max_price: range?.max,
           ...sortParams,
-          limit: 60,
+          skip: (page - 1) * PAGE_SIZE,
+          limit: PAGE_SIZE,
         });
         let results = fetched;
 
@@ -113,19 +120,39 @@ export default function SearchPage() {
           results = results.filter((r) => r.area <= Number(filters.maxArea));
         }
         setRooms(results);
+        setTotalServer(total ?? fetched.length);
       } catch (err) {
         setError('Không thể tải dữ liệu từ server. Vui lòng thử lại.');
         setRooms([]);
+        setTotalServer(0);
       } finally {
         setLoading(false);
       }
     };
 
     loadRooms();
+  }, [query, city, filters, page]);
+
+  // Reset về trang 1 khi đổi từ khoá / city / bộ lọc — tránh hiển thị trang
+  // trống do số tổng giảm đi.
+  useEffect(() => {
+    setPage(1);
   }, [query, city, filters]);
+
+  const totalPages = Math.max(1, Math.ceil(totalServer / PAGE_SIZE));
 
   const handleFilterChange = (nextFilters) => {
     setFilters(nextFilters);
+  };
+
+  const handlePageChange = (next) => {
+    setPage(next);
+    if (resultsTopRef.current) {
+      const top = resultsTopRef.current.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const renderRoomList = () => {
@@ -171,7 +198,10 @@ export default function SearchPage() {
               {!loading && (
                 <p className="text-sm text-gray-500 mt-1">
                   {nearMe ? 'Sắp xếp theo khoảng cách · ' : ''}
-                  <span className="font-medium text-blue-600">{roomsWithDistance.length}</span> phòng phù hợp
+                  <span className="font-medium text-blue-600">{totalServer}</span> phòng phù hợp
+                  {totalPages > 1 && !nearMe && (
+                    <span className="text-gray-400"> · Trang {page}/{totalPages}</span>
+                  )}
                 </p>
               )}
             </div>
@@ -248,31 +278,18 @@ export default function SearchPage() {
           )}
 
           {/* Results */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0" ref={resultsTopRef}>
             {renderRoomList()}
 
-            {/* Pagination */}
-            {!loading && rooms.length > 0 && (
-              <div className="flex items-center justify-center gap-2 mt-10">
-                <button className="w-10 h-10 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-colors">
-                  ‹
-                </button>
-                {[1, 2, 3, 4, 5].map((p) => (
-                  <button
-                    key={p}
-                    className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
-                      p === 1
-                        ? 'bg-blue-600 text-white'
-                        : 'border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <button className="w-10 h-10 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-colors">
-                  ›
-                </button>
-              </div>
+            {/* Pagination — ẩn khi đang chế độ "Phòng gần tôi" vì kết quả
+                đang được sắp theo khoảng cách trên trang hiện tại. */}
+            {!loading && !error && totalServer > 0 && !nearMe && (
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+                className="mt-10"
+              />
             )}
           </div>
         </div>
