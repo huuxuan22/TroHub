@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { FavoritesProvider } from './contexts/FavoritesContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import ChatWidget from './components/common/ChatWidget';
@@ -23,6 +24,7 @@ import ContactPage from './pages/ContactPage';
 import BecomeLandlordPage from './pages/BecomeLandlordPage';
 import LandlordPendingPage from './pages/LandlordPendingPage';
 import NewsPage from './pages/NewsPage';
+import FavoritesPage from './pages/FavoritesPage';
 import RequireAuth from './components/auth/RequireAuth';
 import VerifiedListingGate from './components/auth/VerifiedListingGate';
 import RequireAdmin from './components/auth/RequireAdmin';
@@ -61,6 +63,7 @@ function AppShell() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/room/:id" element={<RoomDetailPage />} />
           <Route
             path="/post"
@@ -143,7 +146,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppShell />
+        <FavoritesProvider>
+          <AppShell />
+        </FavoritesProvider>
       </AuthProvider>
     </BrowserRouter>
   );

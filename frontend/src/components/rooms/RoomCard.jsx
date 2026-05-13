@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import FavoriteToggle from '../favorites/FavoriteToggle';
 import Badge from '../common/Badge';
 import StarRating from '../common/StarRating';
 import { AMENITIES } from '../../data/mockData';
@@ -19,7 +20,6 @@ function formatDate(dateStr) {
 }
 
 export default function RoomCard({ room, featured = false }) {
-  const [saved, setSaved] = useState(false);
   const [imgError, setImgError] = useState(false);
   const navigate = useNavigate();
 
@@ -70,15 +70,7 @@ export default function RoomCard({ room, featured = false }) {
           )}
         </div>
 
-        {/* Save button */}
-        <button
-          className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
-            saved ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-600 hover:bg-red-50 hover:text-red-500'
-          }`}
-          onClick={(e) => { e.stopPropagation(); setSaved(!saved); }}
-        >
-          {saved ? '❤️' : '🤍'}
-        </button>
+        <FavoriteToggle roomId={room.id} variant="card" />
 
         {/* AI Score */}
         {room.aiScore && (

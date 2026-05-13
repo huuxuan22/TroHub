@@ -145,6 +145,8 @@ class Favorite(Base):
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    room: Mapped["Room"] = relationship(foreign_keys=[room_id])
+
 
 class Report(Base):
     __tablename__ = "reports"
