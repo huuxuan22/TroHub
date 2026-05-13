@@ -1,4 +1,4 @@
-from sqlalchemy import asc, desc, or_
+from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -65,20 +65,19 @@ def create_room(db: Session, payload: RoomCreate) -> Room:
     return room
 
 
-def list_rooms(
+def _build_room_filter_query(
     db: Session,
-    skip: int = 0,
-    limit: int = 20,
-    keyword: str | None = None,
-    min_price: float | None = None,
-    max_price: float | None = None,
-    status: str | None = None,
-    room_type: str | None = None,
-    landlord_id: int | None = None,
-    sort_by: str = "created_at",
-    sort_order: str = "desc",
-) -> list[Room]:
-    query = db.query(Room).options(selectinload(Room.images))
+    *,
+    keyword: str | None,
+    min_price: float | None,
+    max_price: float | None,
+    status: str | None,
+    room_type: str | None,
+    landlord_id: int | None,
+):
+    """Trả về base query đã áp filter, chưa sort/phân trang. Dùng chung
+    cho cả list (có sort + offset/limit) và count tổng phục vụ pagination."""
+    query = db.query(Room)
 
     if keyword:
         keyword_like = f"%{keyword.strip()}%"
@@ -101,6 +100,34 @@ def list_rooms(
     if landlord_id is not None:
         query = query.filter(Room.landlord_id == landlord_id)
 
+    return query
+
+
+def list_rooms(
+    db: Session,
+    skip: int = 0,
+    limit: int = 20,
+    keyword: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    status: str | None = None,
+    room_type: str | None = None,
+    landlord_id: int | None = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+) -> tuple[list[Room], int]:
+    base = _build_room_filter_query(
+        db,
+        keyword=keyword,
+        min_price=min_price,
+        max_price=max_price,
+        status=status,
+        room_type=room_type,
+        landlord_id=landlord_id,
+    )
+
+    total = base.with_entities(func.count(Room.id)).scalar() or 0
+
     sortable_fields = {
         "created_at": Room.created_at,
         "price": Room.price,
@@ -108,12 +135,17 @@ def list_rooms(
     }
     sort_column = sortable_fields.get(sort_by, Room.created_at)
     order_fn = desc if sort_order.lower() == "desc" else asc
-    query = query.order_by(order_fn(sort_column))
 
-    rooms = query.offset(skip).limit(limit).all()
+    query = (
+        base.options(selectinload(Room.images))
+        .order_by(order_fn(sort_column), Room.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    rooms = query.all()
     for room in rooms:
         _hydrate_room_coordinates(room, prefer_remote=False, persist=False)
-    return rooms
+    return rooms, total
 
 
 def get_room_or_raise(db: Session, room_id: int) -> Room:

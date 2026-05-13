@@ -92,7 +92,10 @@ export async function fetchRooms(params = {}) {
   const response = await fetch(`${API_BASE_URL}/trohub/rooms?${query.toString()}`);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const data = await response.json();
-  return { rooms: data.map(mapRoomFromApi), isMock: false };
+  const rooms = data.map(mapRoomFromApi);
+  const totalHeader = response.headers.get('X-Total-Count');
+  const total = totalHeader != null && totalHeader !== '' ? Number(totalHeader) : rooms.length;
+  return { rooms, total: Number.isFinite(total) ? total : rooms.length, isMock: false };
 }
 
 export async function fetchRoomDetail(roomId) {

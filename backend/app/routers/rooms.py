@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -76,6 +76,7 @@ def create_room(
 
 @router.get("", response_model=list[RoomOut])
 def list_rooms(
+    response: Response,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     keyword: str | None = Query(default=None),
@@ -91,7 +92,7 @@ def list_rooms(
     if min_price is not None and max_price is not None and min_price > max_price:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="min_price cannot be greater than max_price")
 
-    return list_rooms_service(
+    rooms, total = list_rooms_service(
         db=db,
         skip=skip,
         limit=limit,
@@ -104,6 +105,10 @@ def list_rooms(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    return rooms
 
 
 @router.get("/{room_id}", response_model=RoomOut)
