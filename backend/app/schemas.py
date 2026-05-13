@@ -280,20 +280,32 @@ class RoomAmenityOut(RoomAmenityBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class FavoriteBase(BaseModel):
+class FavoriteCreate(BaseModel):
+    """Client sends only room_id; user_id is taken from JWT."""
+
+    room_id: int = Field(..., ge=1)
+
+
+class FavoriteOut(BaseModel):
+    id: int
     user_id: int
     room_id: int
-
-
-class FavoriteCreate(FavoriteBase):
-    pass
-
-
-class FavoriteOut(FavoriteBase):
-    id: int
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FavoriteWithRoomOut(BaseModel):
+    id: int
+    room_id: int
+    created_at: datetime
+    room: RoomOut
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FavoriteRoomIdsOut(BaseModel):
+    room_ids: list[int]
 
 
 class ReportBase(BaseModel):

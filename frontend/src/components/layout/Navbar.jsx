@@ -39,6 +39,11 @@ export default function Navbar() {
     navigate('/', { replace: true });
   };
 
+  const favoritesBtnClass =
+    'inline-flex items-center justify-center gap-1.5 shrink-0 border border-gray-200 '
+    + 'hover:border-red-200 hover:bg-red-50 text-gray-700 hover:text-red-700 '
+    + 'px-3 py-2 rounded-lg text-sm font-semibold transition-colors';
+
   return (
     <header
       className={`
@@ -77,6 +82,15 @@ export default function Navbar() {
           <div className="flex items-center gap-2 sm:gap-3">
             {user ? (
               <div className="hidden md:flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/favorites')}
+                  className={`${favoritesBtnClass} ${location.pathname === '/favorites' ? 'border-red-200 bg-red-50 text-red-700' : ''}`}
+                  title="Phòng đã lưu"
+                >
+                  <span aria-hidden>🤍</span>
+                  Yêu thích
+                </button>
                 {user.role === 'admin' ? (
                   <button
                     type="button"
@@ -117,6 +131,15 @@ export default function Navbar() {
               </div>
             ) : (
               <div className="hidden md:flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/favorites')}
+                  className={`${favoritesBtnClass} ${location.pathname === '/favorites' ? 'border-red-200 bg-red-50 text-red-700' : ''}`}
+                  title="Phòng đã lưu — cần đăng nhập"
+                >
+                  <span aria-hidden>🤍</span>
+                  Yêu thích
+                </button>
                 <button
                   type="button"
                   onClick={() => navigate('/login', { state: { from: location.pathname } })}
@@ -161,6 +184,13 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/favorites')}
+              className={`w-full text-center text-sm font-semibold border py-2.5 rounded-lg transition-colors ${location.pathname === '/favorites' ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 text-gray-700 hover:bg-red-50 hover:border-red-200'}`}
+            >
+              🤍 Yêu thích
+            </button>
             {user && user.role === 'admin' && (
               <button
                 type="button"

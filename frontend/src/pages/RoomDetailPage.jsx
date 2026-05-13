@@ -5,6 +5,7 @@ import StarRating from '../components/common/StarRating';
 import Badge from '../components/common/Badge';
 import RoomCard from '../components/rooms/RoomCard';
 import HomeMapLeaflet from '../components/home/HomeMapLeaflet';
+import FavoriteToggle from '../components/favorites/FavoriteToggle';
 import { fetchRoomDetail, fetchRooms, hasExactCoordinates } from '../services/roomApi';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
@@ -17,7 +18,6 @@ export default function RoomDetailPage() {
   const navigate = useNavigate();
   const [room, setRoom] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
-  const [saved, setSaved] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [tab, setTab] = useState('detail');
   const [relatedRooms, setRelatedRooms] = useState([]);
@@ -127,12 +127,7 @@ export default function RoomDetailPage() {
                   {room.isVerified && <span className="bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full">✓ Đã xác minh</span>}
                   {room.isFeatured && <span className="bg-yellow-400 text-yellow-900 text-xs font-semibold px-3 py-1 rounded-full">⭐ Nổi bật</span>}
                 </div>
-                <button
-                  onClick={() => setSaved(!saved)}
-                  className="absolute top-4 right-4 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center text-xl shadow-sm hover:scale-110 transition-transform"
-                >
-                  {saved ? '❤️' : '🤍'}
-                </button>
+                <FavoriteToggle roomId={room.id} variant="detail" />
               </div>
               {/* Thumbnails */}
               {room.images?.length > 1 && (

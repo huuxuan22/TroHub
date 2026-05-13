@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import FavoriteToggle from '../favorites/FavoriteToggle';
 import RoomCard from './RoomCard';
 import { SkeletonCard } from '../common/LoadingSpinner';
 
@@ -65,7 +66,6 @@ export default function RoomList({ rooms = [], loading = false, totalCount = 0 }
 }
 
 function RoomCardHorizontal({ room }) {
-  const [saved, setSaved] = useState(false);
   const navigate = useNavigate();
 
   const price = room.price >= 1000000
@@ -91,12 +91,7 @@ function RoomCardHorizontal({ room }) {
             <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 hover:text-blue-600 transition-colors">
               {room.title}
             </h3>
-            <button
-              onClick={(e) => { e.stopPropagation(); setSaved(!saved); }}
-              className="text-xl flex-shrink-0"
-            >
-              {saved ? '❤️' : '🤍'}
-            </button>
+            <FavoriteToggle roomId={room.id} variant="bare" className="flex-shrink-0 text-xl min-w-[2rem]" />
           </div>
           <p className="text-xs text-gray-500 mt-1 truncate">📍 {room.address}, {room.city}</p>
         </div>
