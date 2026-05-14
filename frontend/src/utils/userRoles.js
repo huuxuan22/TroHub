@@ -24,7 +24,7 @@ export function hasPendingLandlordApplication(user) {
   return Number(v) !== 1 && v !== true;
 }
 
-/** Quản lý tin / đăng tin — chỉ tài khoản đã duyệt (hoặc admin). */
+/** Menu "Quản lý phòng" / khu vực chủ nhà — chỉ chủ nhà đã duyệt (admin dùng /admin). */
 export function canPostAndManageRooms(user) {
-  return canPostRoom(user);
+  return isApprovedLandlordAccount(user);
 }
