@@ -1,0 +1,4 @@
+# SQLite / file DB cục bộ — service chỉ lưu MySQL (bảng craw_data), không dùng *.db
+*.db
+*.sqlite
+*.sqlite3
