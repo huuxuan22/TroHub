@@ -69,6 +69,21 @@ def _cors_headers_for_request(request: Request) -> dict[str, str]:
         }
     return {}
 
+# Cho URL kiểu Vite "Network" (http://192.168.x.x:3000) — trình duyệt gửi Origin theo IP, không khớp allow_origins ở trên.
+_cors_regex_env = os.getenv("CORS_ORIGIN_REGEX", "").strip()
+_private_on = os.getenv("CORS_ALLOW_PRIVATE_ORIGINS", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+_default_private_origin_regex = (
+    r"https?://("
+    r"192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+    r"172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}"
+    r")(:[0-9]+)?$"
+)
+allow_origin_regex = _cors_regex_env or (_default_private_origin_regex if _private_on else None)
+
 
 def _upgrade_db_schema() -> None:
     backend_root = Path(__file__).resolve().parent.parent
@@ -93,7 +108,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_origin_regex=_allow_origin_regex,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -5,6 +5,9 @@ import bcrypt
 from datetime import datetime
 
 from app.models import User, UserRole, UserStatus
+import bcrypt
+
+from app.models import User
 from app.schemas import UserCreate, UserUpdate
 from app.services.exceptions import NotFoundError
 
@@ -22,7 +25,8 @@ def get_password_hash(password: str) -> str:
     pw = _password_bytes_for_bcrypt(password)
     salt = bcrypt.gensalt(rounds=12)
     return bcrypt.hashpw(pw, salt).decode("ascii")
-
+def get_password_hash(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
     try:
@@ -48,7 +52,6 @@ def _to_domain_status(value):
     if hasattr(value, "value"):
         return UserStatus(value.value)
     return UserStatus(value)
-
 
 def create_user(db: Session, payload: UserCreate) -> User:
     data = payload.model_dump(exclude={"password", "role", "status"}, mode="python")
