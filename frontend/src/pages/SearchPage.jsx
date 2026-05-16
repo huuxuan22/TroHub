@@ -5,6 +5,7 @@ import RoomList from '../components/rooms/RoomList';
 import AISearchBar from '../components/home/AISearchBar';
 import Pagination from '../components/common/Pagination';
 import { fetchRooms } from '../services/roomApi';
+import { recordSearchHistory } from '../services/searchHistoryApi';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
 const PRICE_RANGES = [
@@ -121,6 +122,27 @@ export default function SearchPage() {
         }
         setRooms(results);
         setTotalServer(total ?? fetched.length);
+
+        if (page === 1) {
+          recordSearchHistory({
+            keyword: query || undefined,
+            city: city || filters.city || undefined,
+            filters: {
+              type: filters.type || undefined,
+              priceRange: filters.priceRange,
+              amenities: filters.amenities,
+              minArea: filters.minArea || undefined,
+              maxArea: filters.maxArea || undefined,
+              verified: filters.verified,
+              sortBy: filters.sortBy,
+              min_price: range?.min,
+              max_price: range?.max,
+              near_me: Boolean(nearMe),
+              query: query || undefined,
+            },
+            result_count: total ?? results.length,
+          });
+        }
       } catch (err) {
         setError('Không thể tải dữ liệu từ server. Vui lòng thử lại.');
         setRooms([]);

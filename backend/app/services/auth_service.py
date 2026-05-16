@@ -14,6 +14,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/trohub/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/trohub/auth/login", auto_error=False)
 
 
 def create_access_token(subject: Any, expires_delta: int | None = None) -> str:
@@ -50,6 +51,32 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
     if not user:
         raise credentials_error
+    return user
+
+
+def get_optional_current_user(
+    token: str | None = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        subject = payload.get("sub")
+        if subject is None:
+            return None
+        user_id = int(subject)
+    except (JWTError, ValueError):
+        return None
+
+    user = (
+        db.query(User)
+        .options(joinedload(User.landlord_profile))
+        .filter(User.id == user_id)
+        .first()
+    )
+    if not user or user.status != UserStatus.ACTIVE:
+        return None
     return user
 
 
