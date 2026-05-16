@@ -4,6 +4,8 @@ import { MapPin, Search } from 'lucide-react';
 import HomeMapLeaflet from './HomeMapLeaflet';
 import { fetchRooms, hasExactCoordinates } from '../../services/roomApi';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../../utils/useGeolocation';
+import { useAuth } from '../../contexts/AuthContext';
+import { isAdminUser } from '../../utils/userRoles';
 
 const BUDGET_MAX = 50_000_000;
 const BUDGET_STEP = 500_000;
@@ -40,6 +42,8 @@ function formatListPrice(price) {
 }
 
 export default function HomeMapExplorer() {
+  const { user } = useAuth();
+  const isAdmin = isAdminUser(user);
   const navigate = useNavigate();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -124,11 +128,6 @@ export default function HomeMapExplorer() {
     setUserLocation(null);
     setLocationError('');
   };
-
-  const selectedRoom = useMemo(
-    () => filtered.find((r) => r.id === selectedId) ?? null,
-    [filtered, selectedId],
-  );
 
   const exactLocationCount = useMemo(
     () => filtered.filter((room) => hasExactCoordinates(room)).length,
@@ -345,15 +344,17 @@ export default function HomeMapExplorer() {
                             </span>
                           )}
                         </div>
-                        <span
-                          className="mt-1 text-xs font-medium text-blue-600 hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/room/${room.id}`);
-                          }}
-                        >
-                          Xem chi tiết →
-                        </span>
+                        {!isAdmin && (
+                          <span
+                            className="mt-1 text-xs font-medium text-blue-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/room/${room.id}`);
+                            }}
+                          >
+                            Xem chi tiết →
+                          </span>
+                        )}
                       </div>
                     </button>
                   </li>
@@ -378,46 +379,6 @@ export default function HomeMapExplorer() {
           panToSelection={mapPanUser}
           userLocation={userLocation}
         />
-        {selectedRoom && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1000] flex justify-center p-3 pb-4 md:justify-end md:items-end md:p-4">
-            <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-white/15 bg-slate-900/92 backdrop-blur-md shadow-xl overflow-hidden flex gap-3 p-3 text-left">
-              <div className="w-24 h-24 flex-shrink-0 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 overflow-hidden">
-                {selectedRoom.images?.[0] ? (
-                  <img src={selectedRoom.images[0]} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-3xl">🏠</div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0 flex flex-col py-0.5">
-                <p className="font-semibold text-white text-sm leading-snug line-clamp-2">{selectedRoom.title}</p>
-                <p className="text-xs text-slate-400 line-clamp-2 mt-1">{selectedRoom.address}</p>
-                <p className="text-sm font-bold text-sky-300 mt-2">
-                  {formatListPrice(selectedRoom.price)}
-                  {selectedRoom.area > 0 && (
-                    <span className="font-normal text-slate-400">
-                      {' '}
-                      · {selectedRoom.area} m²
-                    </span>
-                  )}
-                </p>
-                <div className="mt-auto pt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/room/${selectedRoom.id}`)}
-                    className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2.5 transition-colors"
-                  >
-                    Xem chi tiết
-                  </button>
-                  {!hasExactCoordinates(selectedRoom) && (
-                    <span className="text-[10px] text-amber-200/90 self-center max-w-[7rem]" title={selectedRoom.address}>
-                      Tin chưa ghim được trên bản đồ
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </section>
     </div>
   );

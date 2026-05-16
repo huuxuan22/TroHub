@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import RequireAuth from '../components/auth/RequireAuth';
 import RoomCard from '../components/rooms/RoomCard';
+import { useAuth } from '../contexts/AuthContext';
 import { useFavorites } from '../contexts/FavoritesContext';
 import { fetchMyFavoritesRaw } from '../services/favoritesApi';
 import { mapRoomFromApi } from '../services/roomApi';
+import { isAdminUser } from '../utils/userRoles';
 
 function FavoritesContent() {
+  const { user } = useAuth();
   const { refreshFavoriteIds } = useFavorites();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,8 +30,16 @@ function FavoritesContent() {
   }, []);
 
   useEffect(() => {
+    if (isAdminUser(user)) {
+      setLoading(false);
+      return;
+    }
     load();
-  }, [load]);
+  }, [load, user]);
+
+  if (isAdminUser(user)) {
+    return <Navigate to="/admin" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pt-16">
