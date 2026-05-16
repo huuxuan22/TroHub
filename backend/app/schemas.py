@@ -394,18 +394,19 @@ class NotificationOut(NotificationBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SearchHistoryBase(BaseModel):
-    user_id: int
+class SearchHistoryLogIn(BaseModel):
+    """Body ghi nhận một lần tìm kiếm từ frontend."""
+
+    keyword: str | None = Field(default=None, max_length=255)
+    city: str | None = Field(default=None, max_length=120)
+    filters: dict | None = None
+    result_count: int | None = Field(default=None, ge=0)
+
+
+class SearchHistoryOut(BaseModel):
+    id: int
     keyword: str | None = None
     filters: dict | None = None
-
-
-class SearchHistoryCreate(SearchHistoryBase):
-    pass
-
-
-class SearchHistoryOut(SearchHistoryBase):
-    id: int
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
