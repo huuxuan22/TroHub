@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { isAdminUser } from '../../utils/userRoles';
 import FavoriteToggle from '../favorites/FavoriteToggle';
 import RoomCard from './RoomCard';
 import { SkeletonCard } from '../common/LoadingSpinner';
@@ -67,6 +69,8 @@ export default function RoomList({ rooms = [], loading = false, totalCount = 0 }
 
 function RoomCardHorizontal({ room }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const hideFavorites = isAdminUser(user);
 
   const price = room.price >= 1000000
     ? `${(room.price / 1000000).toFixed(1).replace('.0', '')} triệu`
@@ -91,7 +95,9 @@ function RoomCardHorizontal({ room }) {
             <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 hover:text-blue-600 transition-colors">
               {room.title}
             </h3>
-            <FavoriteToggle roomId={room.id} variant="bare" className="flex-shrink-0 text-xl min-w-[2rem]" />
+            {!hideFavorites && (
+              <FavoriteToggle roomId={room.id} variant="bare" className="flex-shrink-0 text-xl min-w-[2rem]" />
+            )}
           </div>
           <p className="text-xs text-gray-500 mt-1 truncate">📍 {room.address}, {room.city}</p>
         </div>

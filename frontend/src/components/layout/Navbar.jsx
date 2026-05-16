@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { canPostAndManageRooms } from '../../utils/userRoles';
+import { canPostAndManageRooms, isAdminUser } from '../../utils/userRoles';
 
 const BASE_NAV_LINKS = [
   { label: 'Trang chủ', path: '/' },
@@ -17,6 +17,7 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const isAdmin = isAdminUser(user);
 
   const navLinks = useMemo(() => {
     const showLandlord = canPostAndManageRooms(user);
@@ -82,16 +83,18 @@ export default function Navbar() {
           <div className="flex items-center gap-2 sm:gap-3">
             {user ? (
               <div className="hidden md:flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate('/favorites')}
-                  className={`${favoritesBtnClass} ${location.pathname === '/favorites' ? 'border-red-200 bg-red-50 text-red-700' : ''}`}
-                  title="Phòng đã lưu"
-                >
-                  <span aria-hidden>🤍</span>
-                  Yêu thích
-                </button>
-                {user.role === 'admin' ? (
+                {!isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/favorites')}
+                    className={`${favoritesBtnClass} ${location.pathname === '/favorites' ? 'border-red-200 bg-red-50 text-red-700' : ''}`}
+                    title="Phòng đã lưu"
+                  >
+                    <span aria-hidden>🤍</span>
+                    Yêu thích
+                  </button>
+                )}
+                {isAdmin ? (
                   <button
                     type="button"
                     onClick={() => navigate('/admin')}
@@ -117,7 +120,7 @@ export default function Navbar() {
                 )}
                 <span className="text-sm text-gray-700 max-w-[10rem] sm:max-w-[14rem] truncate" title={user.full_name}>
                   👤 {user.full_name}
-                  {user.role === 'admin' && (
+                  {isAdmin && (
                     <span className="ml-1.5 text-xs font-medium text-amber-700">(Admin)</span>
                   )}
                 </span>
@@ -184,14 +187,16 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => navigate('/favorites')}
-              className={`w-full text-center text-sm font-semibold border py-2.5 rounded-lg transition-colors ${location.pathname === '/favorites' ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 text-gray-700 hover:bg-red-50 hover:border-red-200'}`}
-            >
-              🤍 Yêu thích
-            </button>
-            {user && user.role === 'admin' && (
+            {(!user || !isAdmin) && (
+              <button
+                type="button"
+                onClick={() => navigate('/favorites')}
+                className={`w-full text-center text-sm font-semibold border py-2.5 rounded-lg transition-colors ${location.pathname === '/favorites' ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 text-gray-700 hover:bg-red-50 hover:border-red-200'}`}
+              >
+                🤍 Yêu thích
+              </button>
+            )}
+            {user && isAdmin && (
               <button
                 type="button"
                 onClick={() => navigate('/admin')}
@@ -200,7 +205,7 @@ export default function Navbar() {
                 🛠️ Trang quản trị
               </button>
             )}
-            {user && user.role !== 'admin' && (
+            {user && !isAdmin && (
               <button
                 type="button"
                 onClick={() => navigate('/post')}

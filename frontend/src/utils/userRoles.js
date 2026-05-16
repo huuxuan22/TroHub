@@ -1,3 +1,7 @@
+export function isAdminUser(user) {
+  return String(user?.role ?? '').toLowerCase() === 'admin';
+}
+
 /** Admin hoặc chủ nhà đã admin duyệt (role landlord + landlord_profiles.is_verified = 1) — mới được đăng tin / quản lý tin. */
 export function canPostRoom(user) {
   if (!user?.role) return false;

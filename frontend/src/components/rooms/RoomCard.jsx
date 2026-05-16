@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { isAdminUser } from '../../utils/userRoles';
 import FavoriteToggle from '../favorites/FavoriteToggle';
 import Badge from '../common/Badge';
 import StarRating from '../common/StarRating';
@@ -22,6 +24,8 @@ function formatDate(dateStr) {
 export default function RoomCard({ room, featured = false }) {
   const [imgError, setImgError] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const hideFavorites = isAdminUser(user);
 
   const amenityLabels = (room.amenities || [])
     .slice(0, 3)
@@ -70,7 +74,7 @@ export default function RoomCard({ room, featured = false }) {
           )}
         </div>
 
-        <FavoriteToggle roomId={room.id} variant="card" />
+        {!hideFavorites && <FavoriteToggle roomId={room.id} variant="card" />}
 
         {/* AI Score */}
         {room.aiScore && (
