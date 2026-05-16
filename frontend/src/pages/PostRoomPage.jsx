@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { isApprovedLandlordAccount } from '../utils/userRoles';
 import { CATEGORIES, CITIES, AMENITIES } from '../data/mockData';
-import { createRoom, uploadRoomImage } from '../services/roomApi';
+import { createRoom, formatAddressWithCity, uploadRoomImage } from '../services/roomApi';
 import { reverseGeocode } from '../services/geocodingApi';
 import useGeolocation from '../utils/useGeolocation';
 
@@ -19,10 +19,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 function buildAddress(detail, city) {
-  const left = (detail || '').trim().replace(/,\s*$/, '');
-  const right = (city || '').trim();
-  if (left && right) return `${left}, ${right}`;
-  return left || right;
+  return formatAddressWithCity(detail || '', city || '');
 }
 
 function buildDescription(form) {

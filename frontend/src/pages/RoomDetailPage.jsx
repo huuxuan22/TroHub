@@ -8,7 +8,7 @@ import HomeMapLeaflet from '../components/home/HomeMapLeaflet';
 import FavoriteToggle from '../components/favorites/FavoriteToggle';
 import { useAuth } from '../contexts/AuthContext';
 import { isAdminUser } from '../utils/userRoles';
-import { fetchRoomDetail, fetchRooms, hasExactCoordinates } from '../services/roomApi';
+import { fetchRoomDetail, fetchRooms, formatAddressWithCity, hasExactCoordinates } from '../services/roomApi';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
 function formatPrice(price) {
@@ -160,7 +160,7 @@ export default function RoomDetailPage() {
                   <h1 className="text-2xl font-bold text-gray-900 mb-2">{room.title}</h1>
                   <p className="text-gray-600 flex items-center gap-1.5">
                     <span>🧭</span>
-                    {room.address}, {room.city}
+                    {formatAddressWithCity(room.address, room.city)}
                   </p>
                 </div>
                 <div className="flex-shrink-0 text-right">

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { isAdminUser } from '../../utils/userRoles';
 import FavoriteToggle from '../favorites/FavoriteToggle';
 import RoomCard from './RoomCard';
+import { formatAddressWithCity } from '../../services/roomApi';
 import { SkeletonCard } from '../common/LoadingSpinner';
 
 export default function RoomList({ rooms = [], loading = false, totalCount = 0 }) {
@@ -99,7 +100,7 @@ function RoomCardHorizontal({ room }) {
               <FavoriteToggle roomId={room.id} variant="bare" className="flex-shrink-0 text-xl min-w-[2rem]" />
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-1 truncate">📍 {room.address}, {room.city}</p>
+          <p className="text-xs text-gray-500 mt-1 truncate">📍 {formatAddressWithCity(room.address, room.city)}</p>
         </div>
         <div className="flex items-end justify-between">
           <div>

@@ -24,6 +24,25 @@ function inferCityFromAddress(address = '') {
   return parts.length ? parts[parts.length - 1] : '';
 }
 
+/** Chuẩn hóa đoạn địa chỉ (trim + gộp khoảng trắng, không đổi dấu tiếng Việt). */
+function normalizeAddressSegment(s) {
+  return String(s).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Hiển thị / lưu một dòng địa chỉ kèm thành phố mà không lặp (vd: địa chỉ đã kết thúc bằng "Đà Nẵng" thì không thêm ", Đà Nẵng").
+ */
+export function formatAddressWithCity(address = '', city = '') {
+  const addr = String(address).trim().replace(/,\s*$/, '');
+  const cty = String(city).trim();
+  if (!cty) return addr;
+  if (!addr) return cty;
+  const parts = addr.split(',').map((p) => p.trim()).filter(Boolean);
+  const lastNorm = normalizeAddressSegment(parts[parts.length - 1] || '');
+  if (lastNorm === normalizeAddressSegment(cty)) return addr;
+  return `${addr}, ${cty}`;
+}
+
 const DEFAULT_MAP_CENTER = [10.8231, 106.6297]; // TP.HCM
 
 function isValidCoordinate(lat, lng) {
