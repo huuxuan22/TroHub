@@ -27,6 +27,7 @@ from app.routers.landlord import router as landlord_router
 from app.routers.admin import router as admin_router
 from app.routers.geocoding import router as geocoding_router
 from app.routers.search_history import router as search_history_router
+from app.routers.crawl_internal import router as crawl_internal_router
 from app.database import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -89,7 +90,11 @@ allow_origin_regex = _cors_regex_env or (_default_private_origin_regex if _priva
 def _upgrade_db_schema() -> None:
     backend_root = Path(__file__).resolve().parent.parent
     cfg = Config(str(backend_root / "alembic.ini"))
-    command.upgrade(cfg, "head")
+    try:
+        command.upgrade(cfg, "head")
+    except Exception:
+        _log.exception("Alembic upgrade failed — backend vẫn khởi động; chạy thủ công: alembic upgrade head")
+        raise
 
 
 @asynccontextmanager
@@ -139,6 +144,7 @@ app.include_router(uploads_router)
 app.include_router(chat_router)
 app.include_router(geocoding_router)
 app.include_router(search_history_router)
+app.include_router(crawl_internal_router)
 
 
 @app.get("/trohub/health")

@@ -33,7 +33,10 @@ MAX_PAGES = 10
 MAX_RETRIES = 3
 OUTPUT_DIR = "data"
 
-MYSQL_TABLE = os.getenv("MYSQL_TABLE", "craw_data")
+# Số tin mặc định mỗi request crawl / search (có thể ghi đè qua body hoặc query).
+DEFAULT_CRAWL_MAX_ITEMS = int(os.getenv("DEFAULT_CRAWL_MAX_ITEMS", "50"))
+
+MYSQL_TABLE = os.getenv("MYSQL_TABLE", "crawl_data")
 if not re.fullmatch(r"[A-Za-z0-9_]+", MYSQL_TABLE):
     raise ValueError("MYSQL_TABLE chỉ được gồm chữ, số và dấu gạch dưới.")
 
@@ -74,6 +77,17 @@ MYSQL_PORT = int(_mysql["port"])
 MYSQL_USER = str(_mysql["user"])
 MYSQL_PASSWORD = str(_mysql["password"])
 MYSQL_DATABASE = str(_mysql["database"])
+
+# Sau khi ghi crawl_data: POST tới backend để chuẩn hóa nền. Mặc định rỗng = không gọi.
+BACKEND_NORMALIZE_URL = os.getenv("BACKEND_NORMALIZE_URL", "").strip()
+# Gốc backend (health/docs); nếu trống sẽ suy ra từ BACKEND_NORMALIZE_URL.
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "").strip()
+CRAWL_NORMALIZE_WEBHOOK_SECRET = os.getenv("CRAWL_NORMALIZE_WEBHOOK_SECRET", "").strip()
+# Backend có thể chậm khi vừa reload / chạy alembic lúc startup.
+BACKEND_NORMALIZE_TIMEOUT = int(os.getenv("BACKEND_NORMALIZE_TIMEOUT", "30"))
+
+# Geocode từ địa chỉ ngay lúc crawl (chậm với nhiều tin). Mặc định tắt — backend geocode khi insert rooms.
+GEOCODE_ON_CRAWL = os.getenv("GEOCODE_ON_CRAWL", "false").strip().lower() in ("1", "true", "yes")
 
 # True khi đang dùng biến DATABASE_URL (cùng nguồn với backend).
 DATABASE_URL_CONFIGURED = bool(_database_url)
