@@ -9,6 +9,7 @@ import {
   updateRoom,
   uploadRoomImage,
 } from '../services/roomApi';
+import { textMatchesKeyword } from '../utils/searchText';
 
 const PRIMARY = '#2563EB';
 const BACKGROUND = '#F8FAFC';
@@ -149,12 +150,11 @@ export default function ManageRoomsPage() {
   }, [rooms]);
 
   const filteredRooms = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
+    const kw = keyword.trim();
     return rooms.filter((r) => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
       if (!kw) return true;
-      const hay = `${r.title || ''} ${r.address || ''}`.toLowerCase();
-      return hay.includes(kw);
+      return textMatchesKeyword(`${r.title || ''} ${r.address || ''}`, kw);
     });
   }, [rooms, keyword, statusFilter]);
 

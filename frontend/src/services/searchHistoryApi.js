@@ -1,7 +1,5 @@
 import { getAccessToken } from './authApi';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+import { buildApiUrl } from './apiConfig';
 
 /**
  * Ghi nhận lần tìm kiếm vào DB (không chặn UI nếu lỗi).
@@ -26,7 +24,7 @@ export async function recordSearchHistory(payload) {
   if (!hasContent) return;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/trohub/search-history`, {
+    const response = await fetch(buildApiUrl('/trohub/search-history'), {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

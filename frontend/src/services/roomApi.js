@@ -1,9 +1,7 @@
 import { getAccessToken } from './authApi';
 import { formatDistanceKm } from '../utils/useGeolocation';
 import { mapAmenityHighlights } from '../utils/amenityDisplay';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+import { buildApiUrl } from './apiConfig';
 
 function parseDetail(detail) {
   if (!detail) return 'Yêu cầu thất bại';
@@ -83,6 +81,7 @@ export function mapRoomFromApi(room) {
     rating: 4.5,
     reviewCount: 0,
     postedAt: createdAt,
+    landlordId: room.landlord_id || null,
     landlord: { name: `Chủ trọ #${room.landlord_id || 'N/A'}`, phone: 'Đang cập nhật', avatar: null },
     description: room.description || 'Chưa có mô tả',
     aiScore: null,
@@ -110,7 +109,7 @@ export async function fetchRooms(params = {}) {
     }
   });
 
-  const response = await fetch(`${API_BASE_URL}/trohub/rooms?${query.toString()}`);
+  const response = await fetch(buildApiUrl(`/trohub/rooms?${query.toString()}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const data = await response.json();
   const rooms = data.map(mapRoomFromApi);
@@ -120,7 +119,7 @@ export async function fetchRooms(params = {}) {
 }
 
 export async function fetchRoomDetail(roomId) {
-  const response = await fetch(`${API_BASE_URL}/trohub/rooms/${roomId}`);
+  const response = await fetch(buildApiUrl(`/trohub/rooms/${roomId}`));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const data = await response.json();
   return { room: mapRoomFromApi(data), isMock: false };
@@ -131,7 +130,7 @@ export async function fetchFeaturedHotRooms(limit = 10) {
   const query = new URLSearchParams({ limit: String(limit) });
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/rooms/featured-hot?${query}`);
+    response = await fetch(buildApiUrl(`/trohub/rooms/featured-hot?${query.toString()}`));
   } catch {
     return [];
   }
@@ -157,7 +156,7 @@ export async function fetchNearbyCrawlNewRooms(limit = 30) {
   const query = new URLSearchParams({ limit: String(limit) });
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/rooms/nearby-crawl-new?${query}`, {
+    response = await fetch(buildApiUrl(`/trohub/rooms/nearby-crawl-new?${query.toString()}`), {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch {
@@ -191,7 +190,7 @@ export async function uploadRoomImage(file) {
 
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/uploads/image`, {
+    response = await fetch(buildApiUrl('/trohub/uploads/image'), {
       method: 'POST',
       headers,
       body: formData,
@@ -216,7 +215,7 @@ export async function createRoom(payload) {
 
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/rooms`, {
+    response = await fetch(buildApiUrl('/trohub/rooms'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -259,7 +258,7 @@ export async function fetchMyRooms({ landlordId, status, keyword } = {}) {
   const token = getAccessToken();
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-  const response = await fetch(`${API_BASE_URL}/trohub/rooms?${query.toString()}`, { headers });
+  const response = await fetch(buildApiUrl(`/trohub/rooms?${query.toString()}`), { headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(parseDetail(data?.detail) || `HTTP ${response.status}`);
@@ -271,7 +270,7 @@ export async function fetchMyRooms({ landlordId, status, keyword } = {}) {
  * Cập nhật một phòng. Payload là partial — chỉ gửi field cần đổi.
  */
 export async function updateRoom(roomId, payload) {
-  const response = await fetch(`${API_BASE_URL}/trohub/rooms/${roomId}`, {
+  const response = await fetch(buildApiUrl(`/trohub/rooms/${roomId}`), {
     method: 'PUT',
     headers: buildAuthHeaders(),
     body: JSON.stringify(payload),
@@ -284,7 +283,7 @@ export async function updateRoom(roomId, payload) {
 }
 
 export async function deleteRoom(roomId) {
-  const response = await fetch(`${API_BASE_URL}/trohub/rooms/${roomId}`, {
+  const response = await fetch(buildApiUrl(`/trohub/rooms/${roomId}`), {
     method: 'DELETE',
     headers: buildAuthHeaders(),
   });
@@ -296,7 +295,7 @@ export async function deleteRoom(roomId) {
 }
 
 export async function addRoomImage(roomId, imageUrl) {
-  const response = await fetch(`${API_BASE_URL}/trohub/rooms/${roomId}/images`, {
+  const response = await fetch(buildApiUrl(`/trohub/rooms/${roomId}/images`), {
     method: 'POST',
     headers: buildAuthHeaders(),
     body: JSON.stringify({ image_url: imageUrl }),
@@ -309,7 +308,7 @@ export async function addRoomImage(roomId, imageUrl) {
 }
 
 export async function deleteRoomImage(roomId, imageId) {
-  const response = await fetch(`${API_BASE_URL}/trohub/rooms/${roomId}/images/${imageId}`, {
+  const response = await fetch(buildApiUrl(`/trohub/rooms/${roomId}/images/${imageId}`), {
     method: 'DELETE',
     headers: buildAuthHeaders(),
   });

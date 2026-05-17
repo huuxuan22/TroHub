@@ -1,4 +1,7 @@
-from sqlalchemy import asc, desc, func, or_
+import re
+import unicodedata
+
+from sqlalchemy import asc, desc, func
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -15,6 +18,36 @@ def _to_domain_room_status(value):
     if hasattr(value, "value"):
         return RoomStatus(value.value)
     return RoomStatus(value)
+
+
+def _normalize_search_text(value) -> str:
+    text = str(value or "").replace("đ", "d").replace("Đ", "D")
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = re.sub(r"[^0-9a-zA-Z]+", " ", text).lower()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _room_matches_keyword(room: Room, keyword: str | None) -> bool:
+    needle = _normalize_search_text(keyword)
+    if not needle:
+        return True
+
+    haystack = _normalize_search_text(
+        " ".join(
+            str(part or "")
+            for part in (
+                room.title,
+                room.room_type,
+                room.description,
+                room.address,
+                room.source,
+            )
+        )
+    )
+    if needle in haystack:
+        return True
+    return all(token in haystack for token in needle.split())
 
 
 def _apply_coordinates(room: Room, latitude, longitude, *, persist: bool) -> bool:
@@ -79,16 +112,6 @@ def _build_room_filter_query(
     cho cả list (có sort + offset/limit) và count tổng phục vụ pagination."""
     query = db.query(Room)
 
-    if keyword:
-        keyword_like = f"%{keyword.strip()}%"
-        query = query.filter(
-            or_(
-                Room.title.ilike(keyword_like),
-                Room.description.ilike(keyword_like),
-                Room.address.ilike(keyword_like),
-            )
-        )
-
     if min_price is not None:
         query = query.filter(Room.price >= min_price)
     if max_price is not None:
@@ -126,8 +149,6 @@ def list_rooms(
         landlord_id=landlord_id,
     )
 
-    total = base.with_entities(func.count(Room.id)).scalar() or 0
-
     sortable_fields = {
         "created_at": Room.created_at,
         "price": Room.price,
@@ -136,13 +157,20 @@ def list_rooms(
     sort_column = sortable_fields.get(sort_by, Room.created_at)
     order_fn = desc if sort_order.lower() == "desc" else asc
 
-    query = (
+    ordered_query = (
         base.options(selectinload(Room.images))
         .order_by(order_fn(sort_column), Room.id.desc())
-        .offset(skip)
-        .limit(limit)
     )
-    rooms = query.all()
+
+    if _normalize_search_text(keyword):
+        candidates = ordered_query.all()
+        filtered = [room for room in candidates if _room_matches_keyword(room, keyword)]
+        total = len(filtered)
+        rooms = filtered[skip: skip + limit]
+    else:
+        total = base.with_entities(func.count(Room.id)).scalar() or 0
+        rooms = ordered_query.offset(skip).limit(limit).all()
+
     for room in rooms:
         _hydrate_room_coordinates(room, prefer_remote=False, persist=False)
     return rooms, total

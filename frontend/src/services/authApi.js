@@ -1,5 +1,5 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+import { buildApiUrl } from './apiConfig';
+
 const TOKEN_KEY = 'trohub_access_token';
 const USER_KEY = 'trohub_user';
 
@@ -49,7 +49,7 @@ function parseDetail(detail) {
 async function request(path, options = {}) {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, options);
+    response = await fetch(buildApiUrl(path), options);
   } catch {
     throw new Error('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.');
   }
@@ -119,7 +119,7 @@ export async function logoutSession() {
   const token = getAccessToken();
   if (token) {
     try {
-      await fetch(`${API_BASE_URL}/trohub/auth/logout`, {
+      await fetch(buildApiUrl('/trohub/auth/logout'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });

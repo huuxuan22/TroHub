@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+import { buildApiUrl } from './apiConfig';
 
 function parseDetail(detail) {
   if (!detail) return 'Tra cứu thất bại';
@@ -22,7 +21,7 @@ export async function reverseGeocode(latitude, longitude) {
 
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/geocoding/reverse?${params.toString()}`);
+    response = await fetch(buildApiUrl(`/trohub/geocoding/reverse?${params.toString()}`));
   } catch {
     throw new Error('Không thể kết nối đến server.');
   }
