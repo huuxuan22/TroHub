@@ -1,6 +1,6 @@
 """
 Tiện ích xuất JSON/CSV ra thư mục `data/` (tùy chọn, offline).
-Service FastAPI trong `main.py` **không** gọi module này — dữ liệu crawl lưu qua MySQL (`craw_data`).
+Service FastAPI trong `main.py` **không** gọi module này — dữ liệu crawl lưu qua MySQL (`crawl_data`).
 """
 import json
 import csv

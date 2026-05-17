@@ -84,6 +84,88 @@ def _image_dedupe_key(u: str) -> str:
     return base.split("/")[-1][:120]
 
 
+def _parse_coordinate(raw: object, *, max_abs: float) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        value = float(str(raw).strip().replace(",", "."))
+    except ValueError:
+        return None
+    if abs(value) > max_abs:
+        return None
+    return value
+
+
+def _extract_coordinates(soup: BeautifulSoup, html: str) -> tuple[float | None, float | None]:
+    """Lấy lat/lng từ meta, data-*, JSON-LD hoặc script bản đồ trên trang chi tiết."""
+    lat: float | None = None
+    lng: float | None = None
+
+    for meta in soup.find_all("meta"):
+        name = (meta.get("name") or meta.get("property") or "").lower()
+        content = (meta.get("content") or "").strip()
+        if not content:
+            continue
+        if name in ("geo.position", "icbm"):
+            parts = re.split(r"[;,]\s*", content)
+            if len(parts) >= 2:
+                lat = _parse_coordinate(parts[0], max_abs=90)
+                lng = _parse_coordinate(parts[1], max_abs=180)
+                if lat is not None and lng is not None:
+                    return lat, lng
+
+    for tag in soup.find_all(attrs={"data-lat": True, "data-lng": True}):
+        lat = _parse_coordinate(tag.get("data-lat"), max_abs=90)
+        lng = _parse_coordinate(tag.get("data-lng"), max_abs=180)
+        if lat is not None and lng is not None:
+            return lat, lng
+    for tag in soup.find_all(attrs={"data-latitude": True, "data-longitude": True}):
+        lat = _parse_coordinate(tag.get("data-latitude"), max_abs=90)
+        lng = _parse_coordinate(tag.get("data-longitude"), max_abs=180)
+        if lat is not None and lng is not None:
+            return lat, lng
+
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        raw = (script.string or script.get_text() or "").strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        objs = data if isinstance(data, list) else [data]
+        for obj in objs:
+            if not isinstance(obj, dict):
+                continue
+            geo = obj.get("geo")
+            if isinstance(geo, dict):
+                lat = _parse_coordinate(geo.get("latitude"), max_abs=90)
+                lng = _parse_coordinate(geo.get("longitude"), max_abs=180)
+                if lat is not None and lng is not None:
+                    return lat, lng
+            lat = _parse_coordinate(obj.get("latitude"), max_abs=90)
+            lng = _parse_coordinate(obj.get("longitude"), max_abs=180)
+            if lat is not None and lng is not None:
+                return lat, lng
+
+    patterns = [
+        r'"lat(?:itude)?"\s*:\s*([+-]?\d+\.?\d*)\s*,\s*"l(?:on|ng)(?:itude)?"\s*:\s*([+-]?\d+\.?\d*)',
+        r"lat(?:itude)?\s*[:=]\s*([+-]?\d+\.?\d*)\s*[,;]\s*l(?:on|ng)(?:itude)?\s*[:=]\s*([+-]?\d+\.?\d*)",
+        r"center\s*:\s*\[\s*([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)\s*\]",
+        r"position\s*:\s*\{\s*lat\s*:\s*([+-]?\d+\.?\d*)\s*,\s*lng\s*:\s*([+-]?\d+\.?\d*)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, html, re.I)
+        if not m:
+            continue
+        lat = _parse_coordinate(m.group(1), max_abs=90)
+        lng = _parse_coordinate(m.group(2), max_abs=180)
+        if lat is not None and lng is not None and 8 <= lat <= 24 and 102 <= lng <= 110:
+            return lat, lng
+
+    return None, None
+
+
 def _pick_better_photo(a: str, b: str) -> str:
     def score(u: str) -> tuple[int, int]:
         return (1 if "900x600" in u else 0, len(u))
@@ -225,12 +307,16 @@ def parse_detail_page(html: str, url: str) -> dict:
             if address and price_raw and area_raw:
                 break
 
+    latitude, longitude = _extract_coordinates(soup, html)
+
     return {
         "url": url,
         "title": title,
         "price": price_raw,
         "area": area_raw,
         "address": address,
+        "latitude": latitude,
+        "longitude": longitude,
         "phone": phone,
         "description": description[:500],  # Giới hạn độ dài
         # JSON array trong DB — tránh nối "|" khiến browser coi cả chuỗi là một URL (404).

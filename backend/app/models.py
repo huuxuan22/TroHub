@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum as SqlEnum, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, text
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Enum as SqlEnum, Float, ForeignKey, Numeric, SmallInteger, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -98,6 +98,7 @@ class Room(Base):
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     status: Mapped[RoomStatus] = mapped_column(_mysql_pep_enum(RoomStatus, "roomstatus"), default=RoomStatus.DRAFT)
     source: Mapped[str] = mapped_column(String(100), default="owner")
+    source_url: Mapped[str | None] = mapped_column(String(767), unique=True, nullable=True)
     landlord_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -199,6 +200,26 @@ class SearchHistory(Base):
     keyword: Mapped[str | None] = mapped_column(String(255))
     filters: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CrawlData(Base):
+    """Dữ liệu thô từ crawl service (đồng bộ cấu trúc với bảng do crawl tạo)."""
+
+    __tablename__ = "crawl_data"
+
+    url: Mapped[str] = mapped_column(String(767), primary_key=True)
+    title: Mapped[str] = mapped_column(String(1024))
+    address: Mapped[str | None] = mapped_column(Text)
+    price: Mapped[int] = mapped_column(BigInteger, default=0)
+    area: Mapped[float] = mapped_column(Float, default=0.0)
+    room_type: Mapped[str | None] = mapped_column(String(100))
+    amenities: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text)
+    images: Mapped[str | None] = mapped_column(Text)
+    posted_date: Mapped[str | None] = mapped_column(String(100))
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class CrawlHistory(Base):
