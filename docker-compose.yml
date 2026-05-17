@@ -4,7 +4,7 @@
 # Chuẩn bị:
 #   cp backend/.env.example backend/.env
 #   cp chats/.env.example chats/.env
-#   cp crawler/.env.example crawler/.env
+#   cp crawl/.env.example crawl/.env
 #   cp frontend/.env.example frontend/.env   (optional — Vite)
 #
 # Chạy: docker compose up --build
@@ -89,15 +89,19 @@ services:
 
   crawler:
     build:
-      context: ./crawler
+      context: ./crawl
       dockerfile: Dockerfile
     container_name: trohub_crawler
+    command:
+      - sh
+      - -c
+      - pip install --no-cache-dir -r requirements.txt && exec uvicorn main:app --host 0.0.0.0 --port 8002 --reload
     ports:
       - "8002:8002"
     volumes:
-      - ./crawler:/app
+      - ./crawl:/app
     env_file:
-      - path: ./crawler/.env
+      - path: ./crawl/.env
         required: false
     environment:
       DATABASE_URL: ${CRAWLER_DATABASE_URL:-mysql+pymysql://root:yourpassword@host.docker.internal:3306/trohub?charset=utf8mb4}

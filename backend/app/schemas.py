@@ -434,6 +434,11 @@ class CrawlHistoryOut(CrawlHistoryBase):
 
 # === Admin dashboard ===
 
+class DistrictStatOut(BaseModel):
+    name: str
+    count: int
+
+
 class AdminStatsOut(BaseModel):
     """Số liệu tổng quan cho trang quản trị."""
 
@@ -443,10 +448,18 @@ class AdminStatsOut(BaseModel):
     total_admins: int
     pending_landlord_applications: int
     verified_landlords: int
+    verification_rate_percent: float
     total_rooms: int
+    rooms_pending: int
     rooms_available: int
     rooms_hidden: int
+    rooms_by_status: dict[str, int]
+    average_rent_price: float | None
+    top_district_name: str | None
+    top_district_count: int
+    top_districts: list[DistrictStatOut]
     total_reports: int
+    violations_count: int
     pending_reports: int
 
 
