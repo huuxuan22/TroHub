@@ -29,6 +29,7 @@ from app.schemas import (
     UserOut,
     UserStatusPatch,
 )
+from app.services.admin_stats_service import compute_admin_stats
 from app.services.auth_service import require_roles
 from app.services.exceptions import NotFoundError
 from app.services.users_service import delete_user as delete_user_service
@@ -44,54 +45,7 @@ admin_dep = require_roles(UserRole.ADMIN)
 @router.get("/stats", response_model=AdminStatsOut)
 def admin_stats(db: Session = Depends(get_db), _: User = Depends(admin_dep)):
     """Trả các con số tổng quan cho widget dashboard."""
-
-    def _count(query):
-        return int(query.scalar() or 0)
-
-    total_users = _count(db.query(func.count(User.id)))
-    total_tenants = _count(
-        db.query(func.count(User.id)).filter(User.role == UserRole.TENANT)
-    )
-    total_landlords = _count(
-        db.query(func.count(User.id)).filter(User.role == UserRole.LANDLORD)
-    )
-    total_admins = _count(
-        db.query(func.count(User.id)).filter(User.role == UserRole.ADMIN)
-    )
-
-    pending_apps = _count(
-        db.query(func.count(LandlordProfile.id)).filter(LandlordProfile.is_verified == 0)
-    )
-    verified_landlords = _count(
-        db.query(func.count(LandlordProfile.id)).filter(LandlordProfile.is_verified == 1)
-    )
-
-    total_rooms = _count(db.query(func.count(Room.id)))
-    rooms_available = _count(
-        db.query(func.count(Room.id)).filter(Room.status == RoomStatus.AVAILABLE)
-    )
-    rooms_hidden = _count(
-        db.query(func.count(Room.id)).filter(Room.status == RoomStatus.HIDDEN)
-    )
-
-    total_reports = _count(db.query(func.count(Report.id)))
-    pending_reports = _count(
-        db.query(func.count(Report.id)).filter(Report.status == ReportStatus.PENDING)
-    )
-
-    return AdminStatsOut(
-        total_users=total_users,
-        total_tenants=total_tenants,
-        total_landlords=total_landlords,
-        total_admins=total_admins,
-        pending_landlord_applications=pending_apps,
-        verified_landlords=verified_landlords,
-        total_rooms=total_rooms,
-        rooms_available=rooms_available,
-        rooms_hidden=rooms_hidden,
-        total_reports=total_reports,
-        pending_reports=pending_reports,
-    )
+    return AdminStatsOut(**compute_admin_stats(db))
 
 
 # ---------- Duyệt chủ nhà ----------
