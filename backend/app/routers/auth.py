@@ -4,8 +4,8 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.schemas import LoginRequest, TokenOut, UserCreate, UserOut, UserRegister, UserRoleSchema
-from app.services.users_service import create_user, authenticate_user
+from app.schemas import LoginRequest, TokenOut, UserCreate, UserLocationSave, UserOut, UserRegister, UserRoleSchema
+from app.services.users_service import authenticate_user, create_user, save_user_location_address
 from app.services.auth_service import create_access_token, get_current_user
 from app.models import User as UserModel
 
@@ -72,6 +72,23 @@ def get_me(
         .first()
     )
     return user if user is not None else current_user
+
+
+@router.patch("/me/location", response_model=UserOut)
+def save_my_location(
+    payload: UserLocationSave,
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """Lưu địa chỉ vị trí người dùng (chỉ khi đã đăng nhập)."""
+    user = save_user_location_address(db, current_user, payload.address)
+    return (
+        db.query(UserModel)
+        .options(joinedload(UserModel.landlord_profile))
+        .filter(UserModel.id == user.id)
+        .first()
+        or user
+    )
 
 
 @router.post("/logout")

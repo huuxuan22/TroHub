@@ -98,6 +98,22 @@ export async function fetchMe() {
   }
 }
 
+/** Lưu địa chỉ vị trí người dùng (yêu cầu đã đăng nhập). */
+export async function saveUserLocationAddress(address) {
+  const token = getAccessToken();
+  if (!token) return null;
+  const user = await request('/trohub/auth/me/location', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ address }),
+  });
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  return user;
+}
+
 /** Gọi server (nếu còn token) rồi luôn xóa token/user local — không ném lỗi ra ngoài. */
 export async function logoutSession() {
   const token = getAccessToken();

@@ -1,4 +1,6 @@
 import { getAccessToken } from './authApi';
+import { formatDistanceKm } from '../utils/useGeolocation';
+import { mapAmenityHighlights } from '../utils/amenityDisplay';
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
@@ -122,6 +124,58 @@ export async function fetchRoomDetail(roomId) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const data = await response.json();
   return { room: mapRoomFromApi(data), isMock: false };
+}
+
+/** 10 phòng nổi bật — modal ưu đãi sau đăng nhập. */
+export async function fetchFeaturedHotRooms(limit = 10) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/trohub/rooms/featured-hot?${query}`);
+  } catch {
+    return [];
+  }
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row) => {
+    const room = mapRoomFromApi(row);
+    return {
+      ...room,
+      amenityHighlights: mapAmenityHighlights(row.amenities, 3),
+    };
+  });
+}
+
+/** Phòng crawl mới gần `users.address` — modal sau đăng nhập. */
+export async function fetchNearbyCrawlNewRooms(limit = 30) {
+  const token = getAccessToken();
+  if (!token) return [];
+
+  const query = new URLSearchParams({ limit: String(limit) });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/trohub/rooms/nearby-crawl-new?${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return [];
+  }
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  if (!Array.isArray(data)) return [];
+
+  return data.map((row) => {
+    const room = mapRoomFromApi(row);
+    const km = row.distance_km != null ? Number(row.distance_km) : null;
+    return {
+      ...room,
+      distanceLabel: Number.isFinite(km) ? formatDistanceKm(km) : '',
+    };
+  });
 }
 
 /**

@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Amenity, RoomAmenity, RoomImage, User, UserRole
 from app.schemas import (
+    FeaturedHotRoomOut,
+    NearbyCrawlRoomOut,
     RoomCreate,
     RoomCreateRequest,
     RoomImageAddIn,
@@ -109,6 +111,46 @@ def list_rooms(
     response.headers["X-Total-Count"] = str(total)
     response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
     return rooms
+
+
+@router.get("/featured-hot", response_model=list[FeaturedHotRoomOut])
+def featured_hot_rooms(
+    limit: int = Query(default=10, ge=1, le=10),
+    db: Session = Depends(get_db),
+):
+    """10 phòng nổi bật — modal ưu đãi sau đăng nhập."""
+    from app.services.featured_hot_rooms_service import list_featured_hot_rooms
+
+    rooms = list_featured_hot_rooms(db, limit=limit)
+    out: list[FeaturedHotRoomOut] = []
+    for room in rooms:
+        payload = FeaturedHotRoomOut.model_validate(room)
+        payload.amenities = [
+            {"id": ra.amenity.id, "name": ra.amenity.name}
+            for ra in room.room_amenities
+            if ra.amenity is not None
+        ]
+        out.append(payload)
+    return out
+
+
+@router.get("/nearby-crawl-new", response_model=list[NearbyCrawlRoomOut])
+def nearby_crawl_new_rooms(
+    limit: int = Query(default=30, ge=1, le=30),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Phòng crawl mới gần `users.address` — dùng cho modal sau đăng nhập."""
+    from app.services.nearby_crawl_rooms_service import list_nearby_new_crawl_rooms
+
+    rows = list_nearby_new_crawl_rooms(db, current_user, limit=limit)
+    out: list[NearbyCrawlRoomOut] = []
+    for item in rows:
+        room = item["room"]
+        payload = NearbyCrawlRoomOut.model_validate(room)
+        payload.distance_km = item["distance_km"]
+        out.append(payload)
+    return out
 
 
 @router.get("/{room_id}", response_model=RoomOut)

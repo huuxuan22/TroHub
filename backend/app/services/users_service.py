@@ -115,3 +115,10 @@ def delete_user(db: Session, user_id: int) -> None:
     user = get_user_or_raise(db=db, user_id=user_id)
     db.delete(user)
     db.commit()
+
+
+def save_user_location_address(db: Session, user: User, address: str) -> User:
+    user.address = address.strip()[:500]
+    db.commit()
+    db.refresh(user)
+    return user

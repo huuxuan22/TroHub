@@ -6,6 +6,8 @@ import AISearchBar from '../components/home/AISearchBar';
 import Pagination from '../components/common/Pagination';
 import { fetchRooms } from '../services/roomApi';
 import { recordSearchHistory } from '../services/searchHistoryApi';
+import { useAuth } from '../contexts/AuthContext';
+import { persistUserLocationIfAuthenticated } from '../utils/persistUserLocation';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
 const PRICE_RANGES = [
@@ -20,6 +22,7 @@ const PRICE_RANGES = [
 const PAGE_SIZE = 6;
 
 export default function SearchPage() {
+  const { refreshUser } = useAuth();
   const [searchParams] = useSearchParams();
   const [rooms, setRooms] = useState([]);
   const [totalServer, setTotalServer] = useState(0);
@@ -50,6 +53,7 @@ export default function SearchPage() {
     try {
       const pos = await requestLocation();
       setNearMe({ latitude: pos.latitude, longitude: pos.longitude });
+      await persistUserLocationIfAuthenticated(pos, { refreshUser });
     } catch (err) {
       setLocationError(err.message || 'Không lấy được vị trí.');
     }

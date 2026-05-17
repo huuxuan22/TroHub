@@ -34,6 +34,7 @@ import AdminLandlordsPage from './pages/admin/AdminLandlordsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminRoomsPage from './pages/admin/AdminRoomsPage';
 import AdminReportsPage from './pages/admin/AdminReportsPage';
+import FeaturedHotRoomsGate from './components/rooms/FeaturedHotRoomsGate';
 import './index.css';
 
 function NotFoundPage() {
@@ -147,6 +148,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <FavoritesProvider>
+          <FeaturedHotRoomsGate />
           <AppShell />
         </FavoritesProvider>
       </AuthProvider>
