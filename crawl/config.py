@@ -34,7 +34,7 @@ MAX_RETRIES = 3
 OUTPUT_DIR = "data"
 
 # Số tin mặc định mỗi request crawl / search (có thể ghi đè qua body hoặc query).
-DEFAULT_CRAWL_MAX_ITEMS = int(os.getenv("DEFAULT_CRAWL_MAX_ITEMS", "50"))
+DEFAULT_CRAWL_MAX_ITEMS = int(os.getenv("DEFAULT_CRAWL_MAX_ITEMS", "30"))
 
 MYSQL_TABLE = os.getenv("MYSQL_TABLE", "crawl_data")
 if not re.fullmatch(r"[A-Za-z0-9_]+", MYSQL_TABLE):
@@ -91,3 +91,12 @@ GEOCODE_ON_CRAWL = os.getenv("GEOCODE_ON_CRAWL", "false").strip().lower() in ("1
 
 # True khi đang dùng biến DATABASE_URL (cùng nguồn với backend).
 DATABASE_URL_CONFIGURED = bool(_database_url)
+
+# Job nền: mỗi N giây crawl 1 lần theo users.address (round-robin, logic /crawl/by-filters).
+SCHEDULED_CRAWL_ENABLED = os.getenv("SCHEDULED_CRAWL_ENABLED", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+SCHEDULED_CRAWL_INTERVAL_SECONDS = max(30, int(os.getenv("SCHEDULED_CRAWL_INTERVAL_SECONDS", "60")))
+SCHEDULED_CRAWL_MAX_PAGES = max(1, min(200, int(os.getenv("SCHEDULED_CRAWL_MAX_PAGES", "5"))))

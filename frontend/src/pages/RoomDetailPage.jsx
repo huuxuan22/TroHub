@@ -9,6 +9,7 @@ import FavoriteToggle from '../components/favorites/FavoriteToggle';
 import { useAuth } from '../contexts/AuthContext';
 import { isAdminUser } from '../utils/userRoles';
 import { fetchRoomDetail, fetchRooms, formatAddressWithCity, hasExactCoordinates } from '../services/roomApi';
+import { persistUserLocationIfAuthenticated } from '../utils/persistUserLocation';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
 function formatPrice(price) {
@@ -17,7 +18,7 @@ function formatPrice(price) {
 
 export default function RoomDetailPage() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const hideFavorites = isAdminUser(user);
   const navigate = useNavigate();
   const [room, setRoom] = useState(null);
@@ -86,6 +87,7 @@ export default function RoomDetailPage() {
     try {
       const pos = await requestLocation();
       setMyLocation(pos);
+      await persistUserLocationIfAuthenticated(pos, { refreshUser });
     } catch (err) {
       setMyLocationError(err.message || 'Không lấy được vị trí.');
     }

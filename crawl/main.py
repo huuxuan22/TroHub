@@ -30,12 +30,19 @@ from crawl_service import (
     _expand_room_row_images,
     _normalize_crawled_row,
     _resolve_list_url,
-    _row_matches_filters,
     init_db,
     persist_normalized_rows,
+    run_crawl_by_filters_job,
     schedule_notify_backend_normalize,
 )
 from crawler import crawl_all
+from scheduled_crawl import get_scheduled_state, start_scheduled_crawl, stop_scheduled_crawl
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +69,8 @@ class _CrawlMaxItemsMixin(BaseModel):
                 n,
                 DEFAULT_CRAWL_MAX_ITEMS,
             )
+            return DEFAULT_CRAWL_MAX_ITEMS
+        if n > DEFAULT_CRAWL_MAX_ITEMS:
             return DEFAULT_CRAWL_MAX_ITEMS
         return n
 
@@ -126,7 +135,9 @@ class CrawlByLocationRequest(_CrawlMaxItemsMixin):
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await asyncio.to_thread(init_db)
+    start_scheduled_crawl()
     yield
+    await stop_scheduled_crawl()
 
 
 app = FastAPI(
@@ -150,41 +161,45 @@ async def crawl_preload(body: CrawlRequest):
     return {"success": True, **result}
 
 
+@app.get("/crawl/scheduled/status")
+def crawl_scheduled_status():
+    """Trạng thái job nền crawl theo users.address (xem log terminal `[SCHEDULED]`)."""
+    return {"success": True, **get_scheduled_state()}
+
+
 @app.post("/crawl/by-filters")
 async def crawl_by_filters(body: CrawlByFiltersRequest):
     """
     Crawl → **ghi toàn bộ tin đã crawl vào MySQL** (upsert) → lọc theo tiêu chí cho trường `data` trong response.
     """
     try:
-        list_url = _resolve_list_url(body.list_url, body.tinh_thanh)
-        crawled = await asyncio.to_thread(crawl_all, body.max_pages, list_url, body.max_items)
+        result = await asyncio.to_thread(
+            run_crawl_by_filters_job,
+            keyword=body.keyword,
+            tinh_thanh=body.tinh_thanh,
+            min_price=body.min_price,
+            max_price=body.max_price,
+            min_area=body.min_area,
+            max_area=body.max_area,
+            amenities=body.amenities,
+            room_type=body.room_type,
+            max_pages=body.max_pages,
+            max_items=body.max_items,
+            list_url=body.list_url,
+            notify_backend=False,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Crawl failed: {exc}") from exc
 
-    normalized = [_normalize_crawled_row(row) for row in crawled]
-    inserted = await asyncio.to_thread(persist_normalized_rows, normalized)
-    urls = [r.get("url", "") for r in normalized if r.get("url")]
+    urls = result.pop("normalized_urls", [])
+    filtered_rows = result.pop("filtered_rows", [])
     if urls:
         asyncio.create_task(schedule_notify_backend_normalize(urls))
 
-    filtered = [row for row in normalized if _row_matches_filters(row, body)]
-    if body.max_items:
-        filtered = filtered[: body.max_items]
-
-    if crawled and not filtered:
-        logger.warning(
-            "Crawl được %s tin nhưng filter loại hết (keyword/giá/diện tích/loại phòng/tiện ích). "
-            "Toàn bộ tin đã crawl vẫn đã được lưu DB. Kiểm tra max_price/max_area trong request.",
-            len(crawled),
-        )
-
     return {
         "success": True,
-        "source_url": list_url,
-        "crawled_count": len(crawled),
-        "matched_count": len(filtered),
-        "saved": inserted,
-        "data": [_expand_room_row_images(r) for r in filtered],
+        **result,
+        "data": [_expand_room_row_images(r) for r in filtered_rows],
     }
 
 

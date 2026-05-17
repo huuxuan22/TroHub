@@ -304,5 +304,75 @@ def _row_matches_filters(row: dict, body: object) -> bool:
     return True
 
 
+def run_crawl_by_filters_job(
+    *,
+    keyword: str | None = None,
+    tinh_thanh: str | None = None,
+    min_price: int | None = None,
+    max_price: int | None = None,
+    min_area: float | None = None,
+    max_area: float | None = None,
+    amenities: str | None = None,
+    room_type: str | None = None,
+    max_pages: int = 5,
+    max_items: int | None = None,
+    list_url: str | None = None,
+    notify_backend: bool = True,
+) -> dict:
+    """
+    Cùng luồng POST /crawl/by-filters: crawl → lưu crawl_data → (tuỳ chọn) gọi backend normalize.
+    Dùng cho API và job nền theo địa chỉ users.
+    """
+    from config import DEFAULT_CRAWL_MAX_ITEMS, LIST_URL as DEFAULT_LIST_URL
+
+    requested = int(max_items) if max_items is not None else DEFAULT_CRAWL_MAX_ITEMS
+    if requested < DEFAULT_CRAWL_MAX_ITEMS:
+        cap = DEFAULT_CRAWL_MAX_ITEMS
+    else:
+        cap = min(requested, DEFAULT_CRAWL_MAX_ITEMS)
+    base_list = list_url or DEFAULT_LIST_URL
+    list_url_resolved = _resolve_list_url(base_list, tinh_thanh)
+
+    crawled = crawl_all(max_pages=max_pages, list_url=list_url_resolved, max_items=cap)
+    normalized = [_normalize_crawled_row(row) for row in crawled]
+    inserted = persist_normalized_rows(normalized)
+    urls = [r.get("url", "") for r in normalized if r.get("url")]
+    if notify_backend and urls:
+        notify_backend_normalize(urls)
+
+    class _FilterBody:
+        pass
+
+    body = _FilterBody()
+    body.keyword = keyword
+    body.min_price = min_price
+    body.max_price = max_price
+    body.min_area = min_area
+    body.max_area = max_area
+    body.room_type = room_type
+    body.amenities = amenities
+    body.max_items = cap
+
+    filtered = [row for row in normalized if _row_matches_filters(row, body)]
+
+    if crawled and not filtered:
+        logger.warning(
+            "Crawl được %s tin nhưng filter loại hết. Toàn bộ tin vẫn đã lưu DB.",
+            len(crawled),
+        )
+
+    return {
+        "source_url": list_url_resolved,
+        "crawled_count": len(crawled),
+        "matched_count": len(filtered),
+        "saved": inserted,
+        "normalize_urls_queued": len(urls),
+        "tinh_thanh": tinh_thanh,
+        "keyword": keyword,
+        "normalized_urls": urls,
+        "filtered_rows": filtered,
+    }
+
+
 def init_db() -> None:
     init_crawl_table()

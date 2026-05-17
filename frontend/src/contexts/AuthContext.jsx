@@ -9,11 +9,16 @@ import {
 
 const AuthContext = createContext(null);
 
+function shouldShowHotDealsModal(me) {
+  if (!me?.id) return false;
+  return String(me.role ?? '').toLowerCase() !== 'admin';
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(getStoredUser);
   const [authLoading, setAuthLoading] = useState(true);
+  const [pendingHotDealsModal, setPendingHotDealsModal] = useState(false);
 
-  // Restore session once on mount
   useEffect(() => {
     let active = true;
     fetchMe()
@@ -25,12 +30,20 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const me = await apiLogin(email, password);
     setUser(me);
+    if (shouldShowHotDealsModal(me)) {
+      setPendingHotDealsModal(true);
+    }
     return me;
+  }, []);
+
+  const dismissHotDealsModal = useCallback(() => {
+    setPendingHotDealsModal(false);
   }, []);
 
   const logout = useCallback(async () => {
     await logoutSession();
     setUser(null);
+    setPendingHotDealsModal(false);
   }, []);
 
   const register = useCallback(async (payload) => {
@@ -44,7 +57,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, authLoading, login, logout, register, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        authLoading,
+        login,
+        logout,
+        register,
+        refreshUser,
+        pendingHotDealsModal,
+        dismissHotDealsModal,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

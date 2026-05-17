@@ -5,6 +5,7 @@ import HomeMapLeaflet from './HomeMapLeaflet';
 import { fetchRooms, hasExactCoordinates } from '../../services/roomApi';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../../utils/useGeolocation';
 import { useAuth } from '../../contexts/AuthContext';
+import { persistUserLocationIfAuthenticated } from '../../utils/persistUserLocation';
 import { isAdminUser } from '../../utils/userRoles';
 
 const BUDGET_MAX = 50_000_000;
@@ -42,7 +43,7 @@ function formatListPrice(price) {
 }
 
 export default function HomeMapExplorer() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const isAdmin = isAdminUser(user);
   const navigate = useNavigate();
   const [rooms, setRooms] = useState([]);
@@ -119,6 +120,7 @@ export default function HomeMapExplorer() {
       const pos = await requestLocation();
       setUserLocation(pos);
       setMapPanUser(false); // không pan tới room đã chọn, để map tự bay tới user
+      await persistUserLocationIfAuthenticated(pos, { refreshUser });
     } catch (err) {
       setLocationError(err.message || 'Không lấy được vị trí.');
     }

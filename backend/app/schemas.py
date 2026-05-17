@@ -44,6 +44,7 @@ class UserBase(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     role: UserRoleSchema = UserRoleSchema.tenant
     phone_number: str | None = Field(default=None, max_length=20)
+    address: str | None = Field(default=None, max_length=500)
     status: UserStatusSchema = UserStatusSchema.active
 
     @field_validator("email", mode="before")
@@ -121,8 +122,25 @@ class UserUpdate(BaseModel):
     email: str | None = None
     role: UserRoleSchema | None = None
     phone_number: str | None = None
+    address: str | None = Field(default=None, max_length=500)
     status: UserStatusSchema | None = None
     password: str | None = None
+
+
+class UserLocationSave(BaseModel):
+    """Lưu địa chỉ sau khi người dùng đã đăng nhập bấm lấy vị trí."""
+
+    address: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("address", mode="before")
+    @classmethod
+    def strip_address(cls, v: object) -> str:
+        if v is None:
+            raise ValueError("address is required")
+        s = str(v).strip()
+        if not s:
+            raise ValueError("address is required")
+        return s
 
 
 class LoginRequest(BaseModel):
@@ -247,6 +265,21 @@ class RoomOut(RoomBase):
     images: list[RoomImageOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NearbyCrawlRoomOut(RoomOut):
+    distance_km: float | None = None
+
+
+class AmenityBriefOut(BaseModel):
+    id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FeaturedHotRoomOut(RoomOut):
+    amenities: list[AmenityBriefOut] = Field(default_factory=list)
 
 
 class AmenityBase(BaseModel):
