@@ -29,6 +29,7 @@ export default function RoomDetailPage() {
   const [loading, setLoading] = useState(true);
   const [myLocation, setMyLocation] = useState(null);
   const [myLocationError, setMyLocationError] = useState('');
+  const [chatError, setChatError] = useState('');
   const { requestLocation, loading: locating } = useGeolocation();
 
   useEffect(() => {
@@ -101,6 +102,36 @@ export default function RoomDetailPage() {
       `https://www.google.com/maps/dir/?api=1&destination=${dest}${origin}&travelmode=driving`,
       '_blank',
       'noopener,noreferrer',
+    );
+  };
+
+  const handleOpenChat = () => {
+    setChatError('');
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    const receiverId = room.landlordId;
+    if (!receiverId) {
+      setChatError('Khong xac dinh duoc chu phong de nhan tin.');
+      return;
+    }
+
+    if (Number(user.id) === Number(receiverId)) {
+      setChatError('Ban dang xem tin cua chinh minh.');
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('trohub:open-chat', {
+        detail: {
+          roomId: room.id,
+          receiverId,
+          receiverName: room.landlord?.name || `Chu tro #${receiverId}`,
+          roomTitle: room.title,
+        },
+      }),
     );
   };
 
@@ -364,9 +395,18 @@ export default function RoomDetailPage() {
                   </button>
                 )}
 
-                <button className="w-full border-2 border-blue-200 text-blue-600 hover:bg-blue-50 py-3 rounded-xl font-medium transition-colors duration-200 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenChat}
+                  className="w-full border-2 border-blue-200 text-blue-600 hover:bg-blue-50 py-3 rounded-xl font-medium transition-colors duration-200 flex items-center justify-center gap-2"
+                >
                   📨 Nhắn tin
                 </button>
+                {chatError && (
+                  <p className="text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2">
+                    {chatError}
+                  </p>
+                )}
 
                 <button className="w-full border border-gray-200 text-gray-600 hover:bg-gray-50 py-3 rounded-xl font-medium transition-colors text-sm flex items-center justify-center gap-2">
                   🗓️ Đặt lịch xem phòng

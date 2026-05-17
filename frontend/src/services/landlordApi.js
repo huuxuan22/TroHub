@@ -1,7 +1,5 @@
 import { getAccessToken } from './authApi';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+import { buildApiUrl } from './apiConfig';
 
 function parseDetail(detail) {
   if (!detail) return 'Yêu cầu thất bại';
@@ -23,7 +21,7 @@ export async function submitLandlordApplication({ business_name, national_id, bu
   const token = getAccessToken();
   if (!token) throw new Error('Bạn cần đăng nhập.');
 
-  const response = await fetch(`${API_BASE_URL}/trohub/landlord/apply`, {
+  const response = await fetch(buildApiUrl('/trohub/landlord/apply'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

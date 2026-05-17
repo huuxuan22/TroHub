@@ -1,7 +1,5 @@
 import { getAccessToken } from './authApi';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+import { buildApiUrl } from './apiConfig';
 
 function parseDetail(detail) {
   if (!detail) return 'Request failed';
@@ -35,7 +33,7 @@ function authHeadersBearer() {
 export async function fetchFavoriteRoomIds() {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/favorites/me/room-ids`, {
+    response = await fetch(buildApiUrl('/trohub/favorites/me/room-ids'), {
       headers: authHeadersJSON(),
     });
   } catch {
@@ -51,7 +49,7 @@ export async function fetchFavoriteRoomIds() {
 export async function addFavoriteRoom(roomId) {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/favorites/me`, {
+    response = await fetch(buildApiUrl('/trohub/favorites/me'), {
       method: 'POST',
       headers: authHeadersJSON(),
       body: JSON.stringify({ room_id: Number(roomId) }),
@@ -69,7 +67,7 @@ export async function addFavoriteRoom(roomId) {
 export async function removeFavoriteRoom(roomId) {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/favorites/me/by-room/${Number(roomId)}`, {
+    response = await fetch(buildApiUrl(`/trohub/favorites/me/by-room/${Number(roomId)}`), {
       method: 'DELETE',
       headers: authHeadersBearer(),
     });
@@ -88,7 +86,7 @@ export async function removeFavoriteRoom(roomId) {
 export async function fetchMyFavoritesRaw() {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/trohub/favorites/me?limit=100`, {
+    response = await fetch(buildApiUrl('/trohub/favorites/me?limit=100'), {
       headers: authHeadersJSON(),
     });
   } catch {

@@ -393,6 +393,20 @@ class MessageCreate(MessageBase):
     pass
 
 
+class MessageCreateIn(BaseModel):
+    receiver_id: int = Field(..., ge=1)
+    room_id: int | None = Field(default=None, ge=1)
+    content: str = Field(..., min_length=1)
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def strip_content(cls, value: object) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("Nội dung tin nhắn không được để trống")
+        return text
+
+
 class MessageUpdate(BaseModel):
     content: str | None = None
     is_read: bool | None = None
@@ -403,6 +417,24 @@ class MessageOut(MessageBase):
     sent_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MessageThreadReadIn(BaseModel):
+    other_user_id: int = Field(..., ge=1)
+    room_id: int | None = Field(default=None, ge=1)
+
+
+class MessageThreadReadOut(BaseModel):
+    updated: int
+
+
+class MessageConversationOut(BaseModel):
+    other_user_id: int
+    other_user_name: str
+    room_id: int | None = None
+    last_message: str
+    last_message_at: datetime
+    unread_count: int = 0
 
 
 class NotificationBase(BaseModel):

@@ -1,7 +1,5 @@
 import { getAccessToken } from './authApi';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+import { buildApiUrl } from './apiConfig';
 
 function parseDetail(detail) {
   if (!detail) return 'Yêu cầu thất bại';
@@ -33,7 +31,7 @@ async function adminRequest(path, options = {}) {
 
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    response = await fetch(buildApiUrl(path), { ...options, headers });
   } catch {
     throw new Error('Không thể kết nối đến server.');
   }
