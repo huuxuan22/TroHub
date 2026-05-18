@@ -4,9 +4,10 @@ from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.database import SessionLocal
-from app.models import Message
+from app.models import Message, Room, User
 from app.services.auth_service import decode_access_token
 from app.services.chat_realtime import connection_manager
+from app.services.crawl_listing_service import room_is_crawled_listing, user_is_crawl_system_account
 
 router = APIRouter(tags=["chat"])
 
@@ -55,6 +56,27 @@ async def chat_websocket(websocket: WebSocket, room_id: str):
             db_room_id = int(room_id) if room_id.isdigit() and int(room_id) > 0 else None
             db = SessionLocal()
             try:
+                if db_room_id is not None:
+                    room = db.query(Room).filter(Room.id == db_room_id).first()
+                    if room and room_is_crawled_listing(room, db):
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "message": "Phòng từ nguồn crawl — hãy liên hệ qua số điện thoại trên trang chi tiết.",
+                            }
+                        )
+                        continue
+
+                receiver = db.query(User).filter(User.id == receiver_id).first()
+                if user_is_crawl_system_account(receiver):
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "message": "Không thể nhắn tin cho tài khoản hệ thống crawl.",
+                        }
+                    )
+                    continue
+
                 db_message = Message(
                     sender_id=sender_id,
                     receiver_id=receiver_id,

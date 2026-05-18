@@ -1,9 +1,60 @@
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
-from app.models import Message, User
-from app.schemas import MessageCreateIn
+from app.models import Conversation, Message, Room, User
+from app.schemas import ConversationCreate, MessageCreateIn
+from app.services.crawl_listing_service import room_is_crawled_listing, user_is_crawl_system_account
 from app.services.exceptions import NotFoundError
+from app.services.rooms_service import get_room_or_raise
+
+
+class MessagingNotAllowedError(Exception):
+    """Không được nhắn tin / tạo hội thoại (phòng crawl hoặc tài khoản ảo)."""
+
+
+def get_or_create_conversation(
+    db: Session,
+    *,
+    current_user_id: int,
+    payload: ConversationCreate,
+) -> Conversation:
+    if current_user_id not in (payload.user_id, payload.other_user_id):
+        raise PermissionError("Not permitted to create this conversation")
+
+    try:
+        room = get_room_or_raise(db=db, room_id=payload.room_id)
+    except NotFoundError as exc:
+        raise NotFoundError("Room not found") from exc
+
+    if room_is_crawled_listing(room, db):
+        raise MessagingNotAllowedError("Cannot create conversation for a crawled room")
+
+    other_id = payload.other_user_id if current_user_id == payload.user_id else payload.user_id
+    other_user = db.query(User).filter(User.id == other_id).first()
+    if user_is_crawl_system_account(other_user):
+        raise MessagingNotAllowedError("Cannot converse with crawled account")
+
+    pair_filter = or_(
+        and_(Conversation.user_id == payload.user_id, Conversation.other_user_id == payload.other_user_id),
+        and_(Conversation.user_id == payload.other_user_id, Conversation.other_user_id == payload.user_id),
+    )
+    existing = (
+        db.query(Conversation)
+        .filter(Conversation.room_id == payload.room_id, pair_filter)
+        .first()
+    )
+    if existing:
+        return existing
+
+    conversation = Conversation(
+        user_id=payload.user_id,
+        other_user_id=payload.other_user_id,
+        room_id=payload.room_id,
+    )
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
 
 
 def create_message(db: Session, sender_id: int, payload: MessageCreateIn) -> Message:

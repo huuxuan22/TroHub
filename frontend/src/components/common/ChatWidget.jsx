@@ -7,7 +7,9 @@ import {
   sendMessage,
   fetchConversations,
   fetchSupportAdmin,
+  createConversation,
 } from '../../services/messageApi';
+import { fetchRoomContact } from '../../services/roomApi';
 import { 
   MessageCircle, 
   X, 
@@ -132,9 +134,26 @@ export default function ChatWidget() {
 
   // Handle cross-tab/component open-chat events
   useEffect(() => {
-    const handler = (event) => {
+    const handler = async (event) => {
       const nextContext = toContext(event.detail);
       if (!nextContext) return;
+
+      if (nextContext.roomId) {
+        try {
+          const contact = await fetchRoomContact(nextContext.roomId);
+          if (contact.isCrawled) {
+            setError('Tin từ nguồn crawl — vui lòng liên hệ qua số điện thoại trên trang chi tiết phòng.');
+            setOpen(true);
+            setViewMode('list');
+            storeContext(null);
+            setContext(null);
+            return;
+          }
+        } catch {
+          // Nếu không gọi được contact API, vẫn thử mở chat (backend sẽ chặn nếu là crawl)
+        }
+      }
+
       setContext(nextContext);
       storeContext(nextContext);
       setViewMode('chat');
@@ -166,6 +185,14 @@ export default function ChatWidget() {
     setLoading(true);
     setError('');
 
+    if (context.roomId && user?.id) {
+      createConversation({
+        userId: user.id,
+        otherUserId: context.receiverId,
+        roomId: context.roomId,
+      }).catch(() => {});
+    }
+
     fetchThreadMessages({
       otherUserId: context.receiverId,
       roomId: context.roomId,
@@ -188,7 +215,7 @@ export default function ChatWidget() {
     return () => {
       active = false;
     };
-  }, [open, viewMode, canChat, context?.receiverId, context?.roomId]);
+  }, [open, viewMode, canChat, context?.receiverId, context?.roomId, user?.id]);
 
   // WebSocket for active chat
   useEffect(() => {

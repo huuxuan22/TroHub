@@ -82,6 +82,8 @@ export function mapRoomFromApi(room) {
     reviewCount: 0,
     postedAt: createdAt,
     landlordId: room.landlord_id || null,
+    source: room.source || 'owner',
+    isCrawled: (room.source || '').toLowerCase() === 'crawl',
     landlord: { name: `Chủ trọ #${room.landlord_id || 'N/A'}`, phone: 'Đang cập nhật', avatar: null },
     description: room.description || 'Chưa có mô tả',
     aiScore: null,
@@ -123,6 +125,41 @@ export async function fetchRoomDetail(roomId) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const data = await response.json();
   return { room: mapRoomFromApi(data), isMock: false };
+}
+
+/** Liên hệ chủ phòng: crawl → SĐT gốc; tài khoản thật → SĐT/email + chat. */
+export async function fetchRoomContact(roomId) {
+  const response = await fetch(buildApiUrl(`/trohub/rooms/${roomId}/contact`));
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+  return {
+    isCrawled: Boolean(data.is_crawled),
+    phone: data.phone?.trim() || null,
+    email: data.email?.trim() || null,
+    landlordId: data.landlord_id ?? null,
+  };
+}
+
+/** Chủ trọ thật yêu cầu nhận quyền tin crawl (admin duyệt sau). */
+export async function claimRoomOwnership(roomId, { phoneNumber, evidence } = {}) {
+  const token = getAccessToken();
+  if (!token) throw new Error('Bạn cần đăng nhập với tài khoản chủ trọ.');
+  const response = await fetch(buildApiUrl(`/trohub/rooms/${roomId}/claim`), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      phone_number: phoneNumber,
+      evidence: evidence || null,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(parseDetail(data?.detail) || `HTTP ${response.status}`);
+  }
+  return data;
 }
 
 /** 10 phòng nổi bật — modal ưu đãi sau đăng nhập. */
