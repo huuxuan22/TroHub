@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Amenity, RoomAmenity, RoomImage, User, UserRole
+from app.models import Amenity, CrawlData, RoomAmenity, RoomImage, User, UserRole
 from app.schemas import (
     FeaturedHotRoomOut,
     NearbyCrawlRoomOut,
@@ -13,6 +13,9 @@ from app.schemas import (
     RoomOut,
     RoomStatusSchema,
     RoomUpdate,
+    RoomContactInfo,
+    RoomClaimCreate,
+    RoomClaimOut,
 )
 from app.services.minio_storage import storage
 from app.services.auth_service import (
@@ -22,6 +25,8 @@ from app.services.auth_service import (
     require_verified_landlord_or_admin,
 )
 from app.services.exceptions import NotFoundError
+from app.services.crawl_listing_service import room_is_crawled_listing
+from app.services.room_claim_service import ClaimError, create_room_claim
 from app.services.rooms_service import (
     create_room as create_room_service,
     delete_room as delete_room_service,
@@ -196,6 +201,53 @@ def delete_room(
         ensure_verified_landlord_for_own_listing(current_user)
     delete_room_service(db=db, room_id=room_id)
     return None
+
+
+@router.get("/{room_id}/contact", response_model=RoomContactInfo)
+def get_room_contact_info(room_id: int, db: Session = Depends(get_db)):
+    try:
+        room = get_room_or_raise(db=db, room_id=room_id)
+    except NotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    
+    if room_is_crawled_listing(room, db):
+        phone = None
+        if room.source_url:
+            crawl_data = db.query(CrawlData).filter(CrawlData.url == room.source_url).first()
+            if crawl_data and crawl_data.phone:
+                phone = str(crawl_data.phone).strip() or None
+        return RoomContactInfo(
+            is_crawled=True,
+            phone=phone,
+            email=None,
+            landlord_id=room.landlord_id,
+        )
+
+    user = db.query(User).filter(User.id == room.landlord_id).first()
+    return RoomContactInfo(
+        is_crawled=False,
+        phone=user.phone_number if user else None,
+        email=user.email if user else None,
+        landlord_id=room.landlord_id,
+    )
+
+
+@router.post("/{room_id}/claim", response_model=RoomClaimOut, status_code=status.HTTP_201_CREATED)
+def claim_room(
+    room_id: int,
+    payload: RoomClaimCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_verified_landlord_or_admin),
+):
+    try:
+        room = get_room_or_raise(db=db, room_id=room_id)
+    except NotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+        
+    try:
+        return create_room_claim(db=db, room=room, user_id=current_user.id, payload=payload)
+    except ClaimError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 # --- Quản lý ảnh từng phòng -------------------------------------------------

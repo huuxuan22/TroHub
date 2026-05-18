@@ -230,3 +230,19 @@ class CrawlHistory(Base):
     source_url: Mapped[str] = mapped_column(String(700))
     status: Mapped[CrawlStatus] = mapped_column(_mysql_pep_enum(CrawlStatus, "crawlstatus"), default=CrawlStatus.QUEUED)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RoomClaim(Base):
+    __tablename__ = "room_claims"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    phone_number: Mapped[str | None] = mapped_column(String(20))
+    evidence: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    room: Mapped["Room"] = relationship(foreign_keys=[room_id])
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+

@@ -12,6 +12,7 @@ from app.models import (
     Report,
     ReportStatus,
     Room,
+    RoomClaim,
     RoomStatus,
     User,
     UserRole,
@@ -24,6 +25,7 @@ from app.schemas import (
     LandlordRejectIn,
     ReportOut,
     ReportStatusPatch,
+    RoomClaimOut,
     RoomOut,
     RoomStatusPatch,
     UserOut,
@@ -31,6 +33,7 @@ from app.schemas import (
 )
 from app.services.auth_service import require_roles
 from app.services.exceptions import NotFoundError
+from app.services.room_claim_service import ClaimError, approve_room_claim, list_room_claims
 from app.services.users_service import delete_user as delete_user_service
 
 router = APIRouter(prefix="/trohub/admin", tags=["admin"])
@@ -365,6 +368,32 @@ def admin_delete_room(
     db.delete(room)
     db.commit()
     return None
+
+
+# ---------- Claim phòng crawl ----------
+
+@router.get("/room-claims", response_model=list[RoomClaimOut])
+def admin_list_room_claims(
+    claim_status: Literal["pending", "approved", "rejected"] | None = Query(default="pending", alias="status"),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: User = Depends(admin_dep),
+):
+    return list_room_claims(db=db, status=claim_status, limit=limit)
+
+
+@router.patch("/room-claims/{claim_id}/approve", response_model=RoomClaimOut)
+def admin_approve_room_claim(
+    claim_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(admin_dep),
+):
+    try:
+        return approve_room_claim(db=db, claim_id=claim_id)
+    except NotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy yêu cầu hoặc phòng")
+    except ClaimError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 # ---------- Báo cáo ----------

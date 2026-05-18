@@ -8,7 +8,14 @@ import HomeMapLeaflet from '../components/home/HomeMapLeaflet';
 import FavoriteToggle from '../components/favorites/FavoriteToggle';
 import { useAuth } from '../contexts/AuthContext';
 import { isAdminUser } from '../utils/userRoles';
-import { fetchRoomDetail, fetchRooms, formatAddressWithCity, hasExactCoordinates } from '../services/roomApi';
+import {
+  claimRoomOwnership,
+  fetchRoomContact,
+  fetchRoomDetail,
+  fetchRooms,
+  formatAddressWithCity,
+  hasExactCoordinates,
+} from '../services/roomApi';
 import { persistUserLocationIfAuthenticated } from '../utils/persistUserLocation';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
 
@@ -30,19 +37,41 @@ export default function RoomDetailPage() {
   const [myLocation, setMyLocation] = useState(null);
   const [myLocationError, setMyLocationError] = useState('');
   const [chatError, setChatError] = useState('');
+  const [contact, setContact] = useState(null);
+  const [contactLoading, setContactLoading] = useState(true);
+  const [claimStatus, setClaimStatus] = useState('');
+  const [claimLoading, setClaimLoading] = useState(false);
   const { requestLocation, loading: locating } = useGeolocation();
+
+  const isLandlordRole = user?.role === 'landlord' || user?.role === 'admin';
 
   useEffect(() => {
     const loadRoomDetail = async () => {
       try {
         setLoading(true);
+        setContactLoading(true);
         const { room: detail } = await fetchRoomDetail(id);
         setRoom(detail);
+        try {
+          const info = await fetchRoomContact(id);
+          setContact(info);
+        } catch {
+          setContact({
+            isCrawled: detail.isCrawled,
+            phone: null,
+            email: null,
+            landlordId: detail.landlordId,
+          });
+        } finally {
+          setContactLoading(false);
+        }
         const { rooms: list } = await fetchRooms({ keyword: detail.city || detail.address, limit: 6 });
         setRelatedRooms(list.filter((r) => r.id !== detail.id).slice(0, 3));
       } catch {
         setRoom(null);
         setRelatedRooms([]);
+        setContact(null);
+        setContactLoading(false);
       } finally {
         setLoading(false);
       }
@@ -105,8 +134,17 @@ export default function RoomDetailPage() {
     );
   };
 
+  const isCrawledListing = contact?.isCrawled ?? room?.isCrawled;
+  const displayPhone = contact?.phone || room.landlord?.phone;
+  const telHref = displayPhone ? `tel:${String(displayPhone).replace(/\s+/g, '')}` : null;
+  const smsHref = displayPhone ? `sms:${String(displayPhone).replace(/\s+/g, '')}` : null;
+
   const handleOpenChat = () => {
     setChatError('');
+    if (isCrawledListing) {
+      setChatError('Tin từ nguồn crawl — vui lòng gọi điện hoặc nhắn SMS/Zalo theo số hiển thị.');
+      return;
+    }
     if (!user) {
       navigate('/login');
       return;
@@ -114,12 +152,12 @@ export default function RoomDetailPage() {
 
     const receiverId = room.landlordId;
     if (!receiverId) {
-      setChatError('Khong xac dinh duoc chu phong de nhan tin.');
+      setChatError('Không xác định được chủ phòng để nhắn tin.');
       return;
     }
 
     if (Number(user.id) === Number(receiverId)) {
-      setChatError('Ban dang xem tin cua chinh minh.');
+      setChatError('Bạn đang xem tin của chính mình.');
       return;
     }
 
@@ -128,11 +166,37 @@ export default function RoomDetailPage() {
         detail: {
           roomId: room.id,
           receiverId,
-          receiverName: room.landlord?.name || `Chu tro #${receiverId}`,
+          receiverName: room.landlord?.name || `Chủ trọ #${receiverId}`,
           roomTitle: room.title,
         },
       }),
     );
+  };
+
+  const handleClaimOwnership = async () => {
+    setClaimStatus('');
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (!isLandlordRole) {
+      setClaimStatus('Chỉ tài khoản chủ trọ mới có thể gửi yêu cầu nhận phòng.');
+      return;
+    }
+    const phone = window.prompt('Nhập số điện thoại của bạn (để admin xác minh):', user.phone_number || '');
+    if (!phone?.trim()) return;
+    setClaimLoading(true);
+    try {
+      await claimRoomOwnership(room.id, {
+        phoneNumber: phone.trim(),
+        evidence: 'Yêu cầu từ trang chi tiết phòng',
+      });
+      setClaimStatus('Đã gửi yêu cầu. Admin sẽ duyệt và chuyển quyền sở hữu — sau đó bạn có thể nhắn tin qua TroHub.');
+    } catch (err) {
+      setClaimStatus(err.message || 'Gửi yêu cầu thất bại.');
+    } finally {
+      setClaimLoading(false);
+    }
   };
 
   return (
@@ -364,15 +428,21 @@ export default function RoomDetailPage() {
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 sticky top-20">
               <div className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-100">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                  {room.landlord?.name?.charAt(0)}
+                  {isCrawledListing ? '📋' : room.landlord?.name?.charAt(0)}
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900">{room.landlord?.name}</p>
-                  <p className="text-xs text-gray-500">Chủ phòng trọ</p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="w-2 h-2 bg-green-500 rounded-full" />
-                    <span className="text-xs text-green-600">Đang hoạt động</span>
-                  </div>
+                  <p className="font-semibold text-gray-900">
+                    {isCrawledListing ? 'Chủ trọ (tin tổng hợp)' : room.landlord?.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {isCrawledListing ? 'Nguồn crawl — liên hệ trực tiếp' : 'Chủ phòng trọ đăng ký TroHub'}
+                  </p>
+                  {!isCrawledListing && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span className="w-2 h-2 bg-green-500 rounded-full" />
+                      <span className="text-xs text-green-600">Chat thời gian thực</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -381,27 +451,80 @@ export default function RoomDetailPage() {
                   {formatPrice(room.price)}<span className="text-sm font-normal text-gray-400">/tháng</span>
                 </p>
 
-                {showContact ? (
-                  <div className="bg-blue-50 rounded-xl p-4 text-center">
-                    <p className="text-sm text-gray-600 mb-1">Số điện thoại</p>
-                    <p className="text-xl font-bold text-blue-600">{room.landlord?.phone}</p>
+                {contactLoading ? (
+                  <p className="text-center text-sm text-gray-500 py-2">Đang tải thông tin liên hệ…</p>
+                ) : showContact || isCrawledListing ? (
+                  <div className="bg-blue-50 rounded-xl p-4 text-center space-y-2">
+                    {displayPhone && displayPhone !== 'Đang cập nhật' ? (
+                      <>
+                        <p className="text-sm text-gray-600">Số điện thoại</p>
+                        <p className="text-xl font-bold text-blue-600">{displayPhone}</p>
+                        <div className="flex flex-col gap-2 pt-1">
+                          {telHref && (
+                            <a
+                              href={telHref}
+                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+                            >
+                              Gọi điện
+                            </a>
+                          )}
+                          {smsHref && (
+                            <a
+                              href={smsHref}
+                              className="w-full border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                            >
+                              Nhắn SMS
+                            </a>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-600">Chưa có số điện thoại trong dữ liệu crawl.</p>
+                    )}
+                    {!isCrawledListing && contact?.email && (
+                      <p className="text-xs text-gray-500 pt-1">Email: {contact.email}</p>
+                    )}
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => setShowContact(true)}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-semibold transition-colors duration-200 flex items-center justify-center gap-2"
                   >
-                    ☎️ Hiện số điện thoại
+                    Hiện số liên hệ
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={handleOpenChat}
-                  className="w-full border-2 border-blue-200 text-blue-600 hover:bg-blue-50 py-3 rounded-xl font-medium transition-colors duration-200 flex items-center justify-center gap-2"
-                >
-                  📨 Nhắn tin
-                </button>
+                {!isCrawledListing ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenChat}
+                    className="w-full border-2 border-blue-200 text-blue-600 hover:bg-blue-50 py-3 rounded-xl font-medium transition-colors duration-200 flex items-center justify-center gap-2"
+                  >
+                    Nhắn tin qua TroHub
+                  </button>
+                ) : (
+                  <p className="text-xs text-center text-gray-500 px-2">
+                    Chat chỉ mở khi chủ trọ claim tin và được admin duyệt.
+                  </p>
+                )}
+
+                {isCrawledListing && isLandlordRole && (
+                  <button
+                    type="button"
+                    onClick={handleClaimOwnership}
+                    disabled={claimLoading}
+                    className="w-full border border-indigo-200 text-indigo-700 hover:bg-indigo-50 py-3 rounded-xl font-medium transition-colors text-sm disabled:opacity-60"
+                  >
+                    {claimLoading ? 'Đang gửi…' : 'Bạn là chủ phòng? Yêu cầu nhận tin'}
+                  </button>
+                )}
+                {claimStatus && (
+                  <p className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-lg px-3 py-2">
+                    {claimStatus}
+                  </p>
+                )}
+
                 {chatError && (
                   <p className="text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2">
                     {chatError}

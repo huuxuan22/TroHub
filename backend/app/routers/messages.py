@@ -1,9 +1,13 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Room, User
 from app.schemas import (
+    ConversationCreate,
+    ConversationOut,
     MessageConversationOut,
     MessageCreateIn,
     MessageOut,
@@ -11,16 +15,35 @@ from app.schemas import (
     MessageThreadReadOut,
 )
 from app.services.auth_service import get_current_active_user
+from app.services.crawl_listing_service import room_is_crawled_listing, user_is_crawl_system_account
 from app.services.exceptions import NotFoundError
 from app.services.messages_service import (
+    MessagingNotAllowedError,
     create_message as create_message_service,
     get_message_or_raise,
+    get_or_create_conversation,
     list_conversations as list_conversations_service,
     list_thread_messages as list_thread_messages_service,
     mark_thread_as_read as mark_thread_as_read_service,
 )
 
 router = APIRouter(prefix="/trohub/messages", tags=["messages"])
+
+
+@router.post("/conversations", response_model=ConversationOut, status_code=status.HTTP_201_CREATED)
+def create_conversation(
+    payload: ConversationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    try:
+        return get_or_create_conversation(db=db, current_user_id=current_user.id, payload=payload)
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted to create this conversation")
+    except NotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    except MessagingNotAllowedError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.post("", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
@@ -32,14 +55,19 @@ def create_message(
     if payload.receiver_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="receiver_id must be different from sender")
 
-    receiver = db.query(User.id).filter(User.id == payload.receiver_id).first()
+    receiver = db.query(User).filter(User.id == payload.receiver_id).first()
     if receiver is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receiver not found")
 
+    if user_is_crawl_system_account(receiver):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot message crawled account")
+
     if payload.room_id is not None:
-        room_exists = db.query(Room.id).filter(Room.id == payload.room_id).first()
-        if room_exists is None:
+        room = db.query(Room).filter(Room.id == payload.room_id).first()
+        if room is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+        if room_is_crawled_listing(room, db):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot send message to a crawled room")
 
     return create_message_service(db=db, sender_id=current_user.id, payload=payload)
 

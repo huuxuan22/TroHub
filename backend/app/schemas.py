@@ -398,6 +398,7 @@ class MessageCreateIn(BaseModel):
     room_id: int | None = Field(default=None, ge=1)
     content: str = Field(..., min_length=1)
 
+
     @field_validator("content", mode="before")
     @classmethod
     def strip_content(cls, value: object) -> str:
@@ -405,6 +406,30 @@ class MessageCreateIn(BaseModel):
         if not text:
             raise ValueError("Nội dung tin nhắn không được để trống")
         return text
+
+
+class RoomContactInfo(BaseModel):
+    is_crawled: bool
+    phone: str | None
+    email: str | None
+    landlord_id: int | None
+
+
+class RoomClaimCreate(BaseModel):
+    phone_number: str = Field(..., min_length=8)
+    evidence: str | None = None
+
+
+class RoomClaimOut(BaseModel):
+    id: int
+    room_id: int
+    user_id: int
+    status: str
+    phone_number: str | None
+    evidence: str | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MessageUpdate(BaseModel):

@@ -54,6 +54,18 @@ export async function fetchConversations(limit = 20) {
   });
 }
 
+export async function createConversation({ userId, otherUserId, roomId }) {
+  return request('/trohub/messages/conversations', {
+    method: 'POST',
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({
+      user_id: userId,
+      other_user_id: otherUserId,
+      room_id: roomId,
+    }),
+  });
+}
+
 export async function sendMessage({ receiverId, roomId, content }) {
   return request('/trohub/messages', {
     method: 'POST',
