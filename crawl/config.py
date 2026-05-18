@@ -8,9 +8,10 @@ from sqlalchemy.engine.url import make_url
 _ROOT = Path(__file__).resolve().parent
 _REPO = _ROOT.parent
 
-# Backend thường có DATABASE_URL; crawl/.env ghi đè (override=True) nếu cần tách cấu hình.
+# Backend thường có DATABASE_URL. Không override biến đã có (Docker Compose, shell) —
+# tránh crawl/.env ghi đè BACKEND_NORMALIZE_URL=http://backend:8000 bằng 127.0.0.1.
 load_dotenv(_REPO / "backend" / ".env", override=False)
-load_dotenv(_ROOT / ".env", override=True)
+load_dotenv(_ROOT / ".env", override=False)
 
 BASE_URL = "https://phongtro123.com"
 LIST_URL = "https://phongtro123.com/"

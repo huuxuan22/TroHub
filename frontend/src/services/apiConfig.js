@@ -14,9 +14,14 @@ function browserHostname() {
   return window.location?.hostname || '';
 }
 
+function viteEnv() {
+  return import.meta.env || {};
+}
+
 export function resolveApiBaseUrl(rawBaseUrl) {
+  const env = viteEnv();
   const configuredBaseUrl = trimTrailingSlash(
-    rawBaseUrl || import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || DEFAULT_API_BASE_URL,
+    rawBaseUrl || env.VITE_API_BASE_URL || env.VITE_API_BASE || DEFAULT_API_BASE_URL,
   );
 
   try {

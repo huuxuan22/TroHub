@@ -374,5 +374,24 @@ def run_crawl_by_filters_job(
     }
 
 
+def list_crawl_data_urls(*, limit: int = 500) -> list[str]:
+    """Lấy URL từ bảng staging để gọi lại backend normalize."""
+    from crawl_db import get_conn
+    from config import MYSQL_TABLE
+
+    cap = max(1, min(int(limit), 2000))
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT url FROM `{MYSQL_TABLE}` WHERE url IS NOT NULL AND url <> '' ORDER BY url DESC LIMIT %s",
+                (cap,),
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+    return [str(r["url"]).strip() for r in rows if r.get("url")]
+
+
 def init_db() -> None:
     init_crawl_table()

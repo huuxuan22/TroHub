@@ -48,6 +48,12 @@ export async function fetchThreadMessages({ otherUserId, roomId, limit = 100 }) 
   });
 }
 
+export async function fetchConversations(limit = 20) {
+  return request(`/trohub/messages/conversations?limit=${limit}`, {
+    headers: { Authorization: buildAuthHeaders().Authorization },
+  });
+}
+
 export async function sendMessage({ receiverId, roomId, content }) {
   return request('/trohub/messages', {
     method: 'POST',
@@ -68,6 +74,12 @@ export async function markThreadAsRead({ otherUserId, roomId }) {
       other_user_id: otherUserId,
       room_id: roomId ?? null,
     }),
+  });
+}
+
+export async function fetchSupportAdmin() {
+  return request('/trohub/users/support-admin', {
+    headers: buildAuthHeaders(),
   });
 }
 
