@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas import UserCreate, UserOut, UserUpdate
 from app.services.exceptions import NotFoundError
+from app.models import User, UserRole
 from app.services.users_service import (
     create_user as create_user_service,
     delete_user as delete_user_service,
@@ -27,6 +28,14 @@ def list_users(
     db: Session = Depends(get_db),
 ):
     return list_users_service(db=db, skip=skip, limit=limit)
+
+
+@router.get("/support-admin", response_model=UserOut)
+def get_support_admin(db: Session = Depends(get_db)):
+    admin = db.query(User).filter(User.role == UserRole.ADMIN).first()
+    if not admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support admin not found")
+    return admin
 
 
 @router.get("/{user_id}", response_model=UserOut)

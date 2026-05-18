@@ -12,7 +12,7 @@ router = APIRouter(tags=["chat"])
 
 
 @router.websocket("/trohub/ws/chat/{room_id}")
-async def chat_websocket(websocket: WebSocket, room_id: int):
+async def chat_websocket(websocket: WebSocket, room_id: str):
     sender_id_raw = websocket.query_params.get("sender_id")
     token = websocket.query_params.get("token")
     if not sender_id_raw or not sender_id_raw.isdigit():
@@ -52,12 +52,13 @@ async def chat_websocket(websocket: WebSocket, room_id: int):
                 await websocket.send_json({"type": "error", "message": "receiver_id(int) and content(non-empty string) are required"})
                 continue
 
+            db_room_id = int(room_id) if room_id.isdigit() and int(room_id) > 0 else None
             db = SessionLocal()
             try:
                 db_message = Message(
                     sender_id=sender_id,
                     receiver_id=receiver_id,
-                    room_id=room_id,
+                    room_id=db_room_id,
                     content=content.strip(),
                     is_read=False,
                 )
@@ -77,7 +78,7 @@ async def chat_websocket(websocket: WebSocket, room_id: int):
                 message={
                     "type": "message",
                     "id": db_message.id,
-                    "room_id": room_id,
+                    "room_id": db_room_id,
                     "sender_id": sender_id,
                     "receiver_id": receiver_id,
                     "content": db_message.content,

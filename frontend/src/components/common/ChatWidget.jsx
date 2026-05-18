@@ -1,24 +1,37 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   createChatSocket,
   fetchThreadMessages,
   markThreadAsRead,
   sendMessage,
+  fetchConversations,
+  fetchSupportAdmin,
 } from '../../services/messageApi';
+import { 
+  MessageCircle, 
+  X, 
+  Send, 
+  ChevronLeft, 
+  Search, 
+  CheckCheck,
+  Check,
+  User as UserIcon,
+  Home
+} from 'lucide-react';
 
 const CHAT_CONTEXT_KEY = 'trohub_chat_context';
 
 function toContext(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const roomId = Number(raw.roomId);
+  const roomId = raw.roomId ? Number(raw.roomId) : null;
   const receiverId = Number(raw.receiverId);
-  if (!Number.isFinite(roomId) || !Number.isFinite(receiverId)) return null;
+  if (!Number.isFinite(receiverId)) return null;
   return {
     roomId,
     receiverId,
     receiverName: raw.receiverName || `User #${receiverId}`,
-    roomTitle: raw.roomTitle || `Phong #${roomId}`,
+    roomTitle: raw.roomTitle || (roomId ? `Phòng #${roomId}` : 'Trò chuyện'),
   };
 }
 
@@ -43,38 +56,88 @@ function storeContext(context) {
 function formatTime(value) {
   try {
     const date = new Date(value);
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const now = new Date();
+    const isToday = date.getDate() === now.getDate() && 
+                    date.getMonth() === now.getMonth() && 
+                    date.getFullYear() === now.getFullYear();
+    if (isToday) {
+      return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
   } catch {
-    return '--:--';
+    return '';
   }
 }
 
 export default function ChatWidget() {
   const { user } = useAuth();
+  
+  // UI State
   const [open, setOpen] = useState(false);
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'chat'
+  
+  // Chat State
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState([]);
   const [context, setContext] = useState(() => readStoredContext());
+  
+  // Conversations State
+  const [conversations, setConversations] = useState([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Network/Status State
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
+  
   const socketRef = useRef(null);
   const listRef = useRef(null);
 
-  const canChat = Boolean(user?.id && context?.receiverId && context?.roomId);
+  const canChat = Boolean(user?.id && context?.receiverId);
 
+  // Sorting and filtering
   const sortedMessages = useMemo(
     () => [...messages].sort((a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()),
     [messages],
   );
 
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    const lower = searchQuery.toLowerCase();
+    return conversations.filter(c => 
+      c.other_user_name?.toLowerCase().includes(lower) || 
+      c.last_message?.toLowerCase().includes(lower)
+    );
+  }, [conversations, searchQuery]);
+
+  const totalUnread = useMemo(() => {
+    return conversations.reduce((acc, curr) => acc + (curr.unread_count || 0), 0);
+  }, [conversations]);
+
+  // Load conversations when opening the widget or going to list view
+  const loadConversations = useCallback(async () => {
+    if (!user) return;
+    setLoadingConversations(true);
+    try {
+      const data = await fetchConversations(50);
+      setConversations(data || []);
+    } catch (err) {
+      console.error('Error fetching conversations:', err);
+    } finally {
+      setLoadingConversations(false);
+    }
+  }, [user]);
+
+  // Handle cross-tab/component open-chat events
   useEffect(() => {
     const handler = (event) => {
       const nextContext = toContext(event.detail);
       if (!nextContext) return;
       setContext(nextContext);
       storeContext(nextContext);
+      setViewMode('chat');
       setOpen(true);
       setError('');
     };
@@ -82,8 +145,23 @@ export default function ChatWidget() {
     return () => window.removeEventListener('trohub:open-chat', handler);
   }, []);
 
+  // Sync stored context on mount if it exists and we're not explicitly in list mode
   useEffect(() => {
-    if (!open || !canChat) return;
+    if (context && open && viewMode === 'chat') {
+      // already handled
+    }
+  }, [context, open, viewMode]);
+
+  // Fetch conversations when opening list
+  useEffect(() => {
+    if (open && viewMode === 'list') {
+      loadConversations();
+    }
+  }, [open, viewMode, loadConversations]);
+
+  // Fetch messages when entering chat view
+  useEffect(() => {
+    if (!open || viewMode !== 'chat' || !canChat) return;
     let active = true;
     setLoading(true);
     setError('');
@@ -96,11 +174,12 @@ export default function ChatWidget() {
       .then((data) => {
         if (!active) return;
         setMessages(Array.isArray(data) ? data : []);
+        // Also mark as read
         return markThreadAsRead({ otherUserId: context.receiverId, roomId: context.roomId }).catch(() => {});
       })
       .catch((err) => {
         if (!active) return;
-        setError(err.message || 'Khong tai duoc lich su tin nhan.');
+        setError(err.message || 'Không tải được lịch sử tin nhắn.');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -109,35 +188,42 @@ export default function ChatWidget() {
     return () => {
       active = false;
     };
-  }, [open, canChat, context?.receiverId, context?.roomId]);
+  }, [open, viewMode, canChat, context?.receiverId, context?.roomId]);
 
+  // WebSocket for active chat
   useEffect(() => {
-    if (!open || !canChat) return undefined;
+    if (!open || viewMode !== 'chat' || !canChat) return undefined;
+
+    // Create a unique channel for direct messages
+    const socketRoomId = context.roomId || `dm_${Math.min(user.id, context.receiverId)}_${Math.max(user.id, context.receiverId)}`; 
 
     const socket = createChatSocket({
-      roomId: context.roomId,
+      roomId: socketRoomId,
       senderId: user.id,
       onOpen: () => setConnected(true),
       onClose: () => setConnected(false),
       onError: () => setConnected(false),
       onMessage: (payload) => {
         if (payload?.type === 'error') {
-          setError(payload.message || 'Loi ket noi chat realtime.');
+          setError(payload.message || 'Lỗi kết nối chat realtime.');
           return;
         }
         if (payload?.type !== 'message' || !payload?.id) return;
+        
         const isCurrentThread =
-          Number(payload.room_id) === Number(context.roomId)
+          (payload.room_id == context.roomId)
           && (
             (Number(payload.sender_id) === Number(user.id) && Number(payload.receiver_id) === Number(context.receiverId))
             || (Number(payload.sender_id) === Number(context.receiverId) && Number(payload.receiver_id) === Number(user.id))
           );
+          
         if (!isCurrentThread) return;
 
         setMessages((prev) => {
           if (prev.some((msg) => msg.id === payload.id)) return prev;
           return [...prev, payload];
         });
+        
         if (Number(payload.sender_id) === Number(context.receiverId)) {
           markThreadAsRead({ otherUserId: context.receiverId, roomId: context.roomId }).catch(() => {});
         }
@@ -152,12 +238,14 @@ export default function ChatWidget() {
       }
       setConnected(false);
     };
-  }, [open, canChat, context?.roomId, context?.receiverId, user?.id]);
+  }, [open, viewMode, canChat, context?.roomId, context?.receiverId, user?.id]);
 
+  // Auto-scroll chat
   useEffect(() => {
-    if (!open || !listRef.current) return;
-    listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [open, sortedMessages.length]);
+    if (open && viewMode === 'chat' && listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [open, viewMode, sortedMessages.length]);
 
   const submitMessage = async () => {
     if (!canChat || sending) return;
@@ -187,134 +275,325 @@ export default function ChatWidget() {
       setMessages((prev) => [...prev, created]);
       setDraft('');
     } catch (err) {
-      setError(err.message || 'Gui tin nhan that bai.');
+      setError(err.message || 'Gửi tin nhắn thất bại.');
     } finally {
       setSending(false);
     }
   };
 
+  const handleOpenWidget = () => {
+    if (!open) {
+      setOpen(true);
+      if (context) {
+        setViewMode('chat');
+      } else {
+        setViewMode('list');
+      }
+    } else {
+      setOpen(false);
+    }
+  };
+
+  const goToList = () => {
+    setViewMode('list');
+    setContext(null);
+    storeContext(null);
+    setMessages([]);
+  };
+
+  const handleChatWithAdmin = async () => {
+    try {
+      const admin = await fetchSupportAdmin();
+      const newCtx = {
+        roomId: null,
+        receiverId: admin.id,
+        receiverName: 'Hỗ trợ trực tuyến (Admin)',
+        roomTitle: 'Hỗ trợ trực tuyến',
+      };
+      setContext(newCtx);
+      storeContext(newCtx);
+      setViewMode('chat');
+    } catch (err) {
+      console.error('Không thể lấy thông tin admin:', err);
+      alert('Không tìm thấy Quản trị viên nào đang trực tuyến.');
+    }
+  };
+
   return (
-    <div className="fixed right-5 bottom-5 z-50">
-      {open && (
-        <div className="mb-3 w-[320px] sm:w-[380px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
-          <div className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold">TroHub Chat</h3>
-              <p className="text-xs text-blue-100">
-                {context ? `${context.receiverName} - ${context.roomTitle}` : 'Nhan tin voi chu phong'}
-              </p>
-            </div>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-white/90 hover:text-white text-lg leading-none"
-              aria-label="Dong khung chat"
-            >
-              x
-            </button>
-          </div>
-
-          <div className="px-3 py-2 border-b border-gray-100 text-[11px] text-gray-500 flex items-center justify-between">
-            <span>{connected ? 'Realtime: da ket noi' : 'Realtime: dang offline'}</span>
-            {context && (
-              <button
-                type="button"
-                onClick={() => {
-                  setContext(null);
-                  setMessages([]);
-                  storeContext(null);
-                }}
-                className="text-blue-600 hover:underline"
-              >
-                Xoa ngu canh
-              </button>
-            )}
-          </div>
-
-          <div ref={listRef} className="h-72 overflow-y-auto bg-slate-50 px-3 py-3 space-y-2">
-            {!user && (
-              <div className="text-sm text-gray-600 bg-white border border-gray-200 rounded-xl p-3">
-                Vui long dang nhap de su dung nhan tin.
-              </div>
-            )}
-            {user && !context && (
-              <div className="text-sm text-gray-600 bg-white border border-gray-200 rounded-xl p-3">
-                Mo trang chi tiet phong va bam nut "Nhan tin" de bat dau.
-              </div>
-            )}
-            {user && context && loading && (
-              <div className="text-sm text-gray-500">Dang tai lich su tin nhan...</div>
-            )}
-            {user && context && !loading && sortedMessages.length === 0 && (
-              <div className="text-sm text-gray-500 bg-white border border-gray-200 rounded-xl p-3">
-                Chua co tin nhan. Hay gui loi chao dau tien.
-              </div>
-            )}
-
-            {sortedMessages.map((item) => {
-              const mine = Number(item.sender_id) === Number(user?.id);
-              return (
-                <div
-                  key={item.id}
-                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-                    mine
-                      ? 'ml-auto bg-blue-600 text-white'
-                      : 'bg-white border border-gray-200 text-gray-700'
-                  }`}
-                >
-                  <p>{item.content}</p>
-                  <p className={`mt-1 text-[11px] ${mine ? 'text-blue-100' : 'text-gray-400'}`}>
-                    {formatTime(item.sent_at)}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="p-3 border-t border-gray-100">
-            {error && (
-              <p className="mb-2 text-xs bg-red-50 border border-red-200 text-red-700 rounded-lg px-2.5 py-2">
-                {error}
-              </p>
-            )}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder={canChat ? 'Nhap tin nhan...' : 'Chon ngu canh chat tu trang phong'}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    submitMessage();
-                  }
-                }}
-                disabled={!canChat || sending}
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 disabled:bg-gray-100"
-              />
-              <button
-                type="button"
-                onClick={submitMessage}
-                disabled={!canChat || sending}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-60"
-              >
-                {sending ? 'Dang gui...' : 'Gui'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="relative w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center transition-colors"
-        aria-label="Mo chat ho tro"
+    <div className="fixed right-4 bottom-4 sm:right-6 sm:bottom-6 z-[999]">
+      {/* Widget Container */}
+      <div 
+        className={`
+          absolute bottom-20 right-0 w-[350px] sm:w-[380px] bg-white rounded-2xl shadow-2xl 
+          border border-slate-100 overflow-hidden flex flex-col transition-all duration-300 origin-bottom-right
+          ${open ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'}
+        `}
+        style={{ height: '550px', maxHeight: 'calc(100vh - 100px)' }}
       >
-        <span className="text-2xl">...</span>
-        {!open && (
-          <span className="absolute top-1.5 right-1.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white" />
+        
+        {/* --- LIST VIEW --- */}
+        {viewMode === 'list' && (
+          <>
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 shrink-0 shadow-sm relative z-10">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-lg tracking-tight">Tin nhắn</h3>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="p-1 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-200" />
+                <input 
+                  type="text" 
+                  placeholder="Tìm kiếm..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full bg-black/10 border border-white/20 text-white placeholder-blue-200 text-sm rounded-full py-1.5 pl-9 pr-4 outline-none focus:bg-black/20 focus:border-white/40 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-slate-50 flex flex-col">
+              {!user ? (
+                <div className="flex flex-col items-center justify-center h-full p-6 text-center text-slate-500 flex-1">
+                  <MessageCircle size={40} className="text-slate-300 mb-3" />
+                  <p className="text-sm">Vui lòng đăng nhập để xem tin nhắn</p>
+                </div>
+              ) : (
+                <>
+                  <div className="p-3 border-b border-slate-100 bg-white shrink-0">
+                    <button 
+                      onClick={handleChatWithAdmin}
+                      className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <UserIcon size={16} /> Liên hệ với Quản trị viên
+                    </button>
+                  </div>
+                  
+                  {loadingConversations && conversations.length === 0 ? (
+                    <div className="flex items-center justify-center p-6 flex-1">
+                      <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : filteredConversations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-6 text-center text-slate-500 flex-1">
+                      <MessageCircle size={40} className="text-slate-300 mb-3" />
+                      <p className="text-sm">{searchQuery ? 'Không tìm thấy kết quả' : 'Chưa có cuộc trò chuyện nào'}</p>
+                    </div>
+                  ) : (
+                <div className="divide-y divide-slate-100">
+                  {filteredConversations.map(conv => (
+                    <button
+                      key={`${conv.other_user_id}-${conv.room_id}`}
+                      className="w-full p-3 flex items-start gap-3 hover:bg-blue-50/50 transition-colors text-left"
+                      onClick={() => {
+                        const newCtx = {
+                          roomId: conv.room_id,
+                          receiverId: conv.other_user_id,
+                          receiverName: conv.other_user_name,
+                          roomTitle: conv.room_id ? `Phòng #${conv.room_id}` : 'Trò chuyện',
+                        };
+                        setContext(newCtx);
+                        storeContext(newCtx);
+                        setViewMode('chat');
+                      }}
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center text-blue-600 font-semibold shadow-inner">
+                          {conv.other_user_name?.charAt(0).toUpperCase() || <UserIcon size={20} />}
+                        </div>
+                        {conv.unread_count > 0 && (
+                          <div className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-white">
+                            {conv.unread_count > 99 ? '99+' : conv.unread_count}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 py-1">
+                        <div className="flex justify-between items-baseline mb-0.5">
+                          <h4 className={`text-sm truncate pr-2 ${conv.unread_count > 0 ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>
+                            {conv.other_user_name}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap">
+                            {formatTime(conv.last_message_at)}
+                          </span>
+                        </div>
+                        <p className={`text-xs truncate ${conv.unread_count > 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>
+                          {conv.last_message}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+              )}
+            </div>
+          </>
         )}
-      </button>
+
+        {/* --- CHAT VIEW --- */}
+        {viewMode === 'chat' && (
+          <>
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 shrink-0 shadow-sm z-10 flex items-center gap-3">
+              <button
+                onClick={goToList}
+                className="p-1.5 hover:bg-white/20 rounded-full transition-colors shrink-0"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-[15px] leading-tight truncate">
+                  {context?.receiverName || 'Đang tải...'}
+                </h3>
+                <div className="flex items-center gap-1.5 text-blue-100 text-[11px] mt-0.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.5)]' : 'bg-red-400'}`}></span>
+                  <span className="truncate">{context?.roomTitle}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setOpen(false)}
+                className="p-1.5 hover:bg-white/20 rounded-full transition-colors shrink-0"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div 
+              ref={listRef} 
+              className="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-4 relative"
+              style={{
+                backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 1px)',
+                backgroundSize: '20px 20px'
+              }}
+            >
+              {!user ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-4 text-center text-sm text-slate-600 shadow-sm">
+                  Vui lòng đăng nhập để sử dụng nhắn tin.
+                </div>
+              ) : !context ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-4 text-center text-sm text-slate-600 shadow-sm">
+                  Vui lòng chọn người để nhắn tin.
+                </div>
+              ) : loading ? (
+                <div className="flex justify-center py-4">
+                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : sortedMessages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                  <MessageCircle size={48} className="mb-3 opacity-20" />
+                  <p className="text-sm">Chưa có tin nhắn.</p>
+                  <p className="text-xs mt-1">Hãy gửi lời chào đầu tiên!</p>
+                </div>
+              ) : (
+                <div className="flex flex-col space-y-3 pb-2">
+                  {sortedMessages.map((item, index) => {
+                    const mine = Number(item.sender_id) === Number(user?.id);
+                    const showAvatar = !mine && (index === 0 || Number(sortedMessages[index - 1]?.sender_id) !== Number(item.sender_id));
+                    
+                    return (
+                      <div key={item.id} className={`flex w-full ${mine ? 'justify-end' : 'justify-start'}`}>
+                        {!mine && (
+                          <div className="w-7 shrink-0 mr-2 flex flex-col justify-end pb-1">
+                            {showAvatar && (
+                              <div className="w-7 h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-sm">
+                                {context?.receiverName?.charAt(0).toUpperCase() || 'U'}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div
+                          className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-[14px] shadow-sm relative group ${
+                            mine
+                              ? 'bg-blue-600 text-white rounded-br-sm'
+                              : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
+                          }`}
+                        >
+                          <p className="leading-relaxed whitespace-pre-wrap word-break">{item.content}</p>
+                          <div className={`flex items-center justify-end gap-1 mt-1 ${mine ? 'text-blue-200' : 'text-slate-400'}`}>
+                            <span className="text-[10px] select-none">
+                              {formatTime(item.sent_at)}
+                            </span>
+                            {mine && (
+                              item.is_read ? <CheckCheck size={12} className="text-blue-200" /> : <Check size={12} />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 bg-white border-t border-slate-100 shrink-0">
+              {error && (
+                <div className="mb-2 text-[11px] bg-red-50 border border-red-100 text-red-600 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"></span>
+                  {error}
+                </div>
+              )}
+              <div className="flex items-end gap-2 bg-slate-50 border border-slate-200 p-1.5 rounded-2xl focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                <textarea
+                  placeholder={canChat ? 'Nhắn tin...' : 'Không thể nhắn tin'}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      submitMessage();
+                    }
+                  }}
+                  disabled={!canChat || sending}
+                  rows={1}
+                  className="flex-1 bg-transparent px-3 py-1.5 text-sm outline-none resize-none max-h-[100px] disabled:opacity-50 scrollbar-hide"
+                  style={{ minHeight: '36px' }}
+                />
+                <button
+                  type="button"
+                  onClick={submitMessage}
+                  disabled={!canChat || sending || !draft.trim()}
+                  className="shrink-0 w-9 h-9 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-colors disabled:opacity-50 disabled:hover:bg-blue-600 shadow-sm"
+                >
+                  <Send size={16} className={sending ? 'animate-pulse' : 'ml-0.5'} />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* FAB Button */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={handleOpenWidget}
+          className={`
+            relative w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300
+            ${open 
+              ? 'bg-slate-800 hover:bg-slate-900 text-white rotate-90 scale-95' 
+              : 'bg-gradient-to-tr from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white hover:scale-105 hover:shadow-blue-500/30'
+            }
+          `}
+          aria-label="Mở chat"
+        >
+          {open ? (
+            <X size={26} className="-rotate-90 transition-transform duration-300" />
+          ) : (
+            <MessageCircle size={26} className={totalUnread > 0 ? 'animate-pulse' : ''} />
+          )}
+        </button>
+        
+        {/* Unread Badge on FAB */}
+        {!open && totalUnread > 0 && (
+          <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 border-2 border-white rounded-full text-white text-[11px] font-bold flex items-center justify-center shadow-sm animate-bounce">
+            {totalUnread > 99 ? '99+' : totalUnread}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

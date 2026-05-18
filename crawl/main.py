@@ -33,6 +33,7 @@ from crawl_service import (
     init_db,
     persist_normalized_rows,
     run_crawl_by_filters_job,
+    list_crawl_data_urls,
     schedule_notify_backend_normalize,
 )
 from crawler import crawl_all
@@ -165,6 +166,21 @@ async def crawl_preload(body: CrawlRequest):
 def crawl_scheduled_status():
     """Trạng thái job nền crawl theo users.address (xem log terminal `[SCHEDULED]`)."""
     return {"success": True, **get_scheduled_state()}
+
+
+@app.post("/crawl/retry-normalize")
+async def retry_normalize_crawl_data(
+    limit: int = Query(default=500, ge=1, le=2000, description="Số URL tối đa gửi backend"),
+):
+    """
+    Gửi lại URL đã có trong `crawl_data` tới backend để insert `rooms` / `room_images`.
+    Dùng sau khi sửa BACKEND_NORMALIZE_URL hoặc khi crawl trước đó không gọi được backend.
+    """
+    urls = await asyncio.to_thread(list_crawl_data_urls, limit=limit)
+    if not urls:
+        return {"success": True, "queued": 0, "message": "Bảng crawl_data trống"}
+    await schedule_notify_backend_normalize(urls)
+    return {"success": True, "queued": len(urls), "message": "Đã gọi backend normalize (xem log backend: trohub.crawl_normalize)"}
 
 
 @app.post("/crawl/by-filters")
