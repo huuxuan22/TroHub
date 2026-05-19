@@ -49,6 +49,13 @@ def _normalize_text(value: str) -> str:
     return normalized
 
 
+def _address_piece_key(value: object) -> str:
+    """Create a stable comparison key to avoid duplicated city/province pieces."""
+    normalized = _normalize_text(str(value or ""))
+    normalized = re.sub(r"^(thanh pho|tp)\s+", "", normalized)
+    return normalized
+
+
 def _sanitize_coordinate(value: object, max_abs: int) -> Decimal | None:
     if value in (None, ""):
         return None
@@ -230,9 +237,13 @@ def reverse_geocode(latitude: str, longitude: str) -> dict | None:
     seen: set[str] = set()
     for key in keys_in_order:
         value = address_parts.get(key)
-        if value and value not in seen:
-            seen.add(value)
-            pieces.append(value)
+        value_clean = " ".join(str(value or "").split()).strip()
+        if not value_clean:
+            continue
+        dedupe_key = _address_piece_key(value_clean)
+        if dedupe_key and dedupe_key not in seen:
+            seen.add(dedupe_key)
+            pieces.append(value_clean)
     short_address = ", ".join(pieces) or display_name
 
     return {

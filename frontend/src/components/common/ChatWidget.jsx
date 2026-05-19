@@ -77,6 +77,31 @@ function extractField(line, label) {
   return match?.[1]?.trim() || '';
 }
 
+function normalizeAddressPiece(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/^(thành phố|tp\.?)\s+/i, '');
+}
+
+function sanitizeAddress(address = '') {
+  const parts = String(address)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!parts.length) return '';
+
+  const deduped = [];
+  parts.forEach((part) => {
+    const normalized = normalizeAddressPiece(part);
+    const prevNormalized = normalizeAddressPiece(deduped[deduped.length - 1] || '');
+    if (normalized && normalized === prevNormalized) return;
+    deduped.push(part);
+  });
+  return deduped.join(', ');
+}
+
 function extractChatCards(content = '') {
   return String(content)
     .split('\n')
@@ -93,7 +118,7 @@ function extractChatCards(content = '') {
           badge: `#${roomId}`,
           price: extractField(line, 'giá'),
           area: extractField(line, 'diện tích'),
-          address: extractField(line, 'địa chỉ'),
+          address: sanitizeAddress(extractField(line, 'địa chỉ')),
           source: extractField(line, 'nguồn'),
         };
       }
@@ -109,7 +134,7 @@ function extractChatCards(content = '') {
           badge: 'Tin crawl',
           price: extractField(line, 'giá'),
           area: extractField(line, 'diện tích'),
-          address: extractField(line, 'địa chỉ'),
+          address: sanitizeAddress(extractField(line, 'địa chỉ')),
           phone: line.match(/SĐT nguồn:\s*([^;\n]+)/i)?.[1]?.trim() || '',
         };
       }

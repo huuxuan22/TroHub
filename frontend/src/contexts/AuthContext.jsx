@@ -5,6 +5,7 @@ import {
   login as apiLogin,
   logoutSession,
   register as apiRegister,
+  requestRegistrationCode as apiRequestRegistrationCode,
 } from '../services/authApi';
 
 const AuthContext = createContext(null);
@@ -50,6 +51,10 @@ export function AuthProvider({ children }) {
     await apiRegister(payload);
   }, []);
 
+  const requestRegistrationCode = useCallback(async (payload) => {
+    await apiRequestRegistrationCode(payload);
+  }, []);
+
   const refreshUser = useCallback(async () => {
     const me = await fetchMe();
     setUser(me);
@@ -64,6 +69,7 @@ export function AuthProvider({ children }) {
         login,
         logout,
         register,
+        requestRegistrationCode,
         refreshUser,
         pendingHotDealsModal,
         dismissHotDealsModal,

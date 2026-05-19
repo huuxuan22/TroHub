@@ -4,16 +4,29 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.schemas import LoginRequest, TokenOut, UserCreate, UserLocationSave, UserOut, UserRegister, UserRoleSchema
+from app.schemas import (
+    LoginRequest,
+    TokenOut,
+    UserCreate,
+    UserLocationSave,
+    UserOut,
+    UserRegister,
+    UserRegistrationCodeRequest,
+    UserRoleSchema,
+)
 from app.services.users_service import authenticate_user, create_user, save_user_location_address
 from app.services.auth_service import create_access_token, get_current_user
+from app.services.email_verification_service import (
+    EmailVerificationDeliveryError,
+    send_registration_code,
+    verify_registration_code,
+)
 from app.models import User as UserModel
 
 router = APIRouter(prefix="/trohub/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register(payload: UserRegister, db: Session = Depends(get_db)):
+def _ensure_public_registration_payload(payload: UserRegistrationCodeRequest, db: Session) -> None:
     # ensure email is unique
     if db.query(UserModel.id).filter(func.lower(UserModel.email) == payload.email).first():
         raise HTTPException(
@@ -27,6 +40,26 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Đăng ký công khai chỉ dành cho tài khoản người tìm phòng. Liên hệ hỗ trợ nếu bạn là chủ nhà.",
         )
+
+
+@router.post("/register/send-code", status_code=status.HTTP_202_ACCEPTED)
+def send_register_code(payload: UserRegistrationCodeRequest, db: Session = Depends(get_db)):
+    _ensure_public_registration_payload(payload, db)
+    try:
+        send_registration_code(db=db, email=payload.email)
+    except EmailVerificationDeliveryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return {"message": "Đã gửi mã xác thực đến email của bạn."}
+
+
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def register(payload: UserRegister, db: Session = Depends(get_db)):
+    _ensure_public_registration_payload(payload, db)
+    try:
+        verify_registration_code(db=db, email=payload.email, code=payload.verification_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     create_payload = UserCreate(
         full_name=payload.full_name,
         email=payload.email,
