@@ -20,20 +20,44 @@ function parseDetail(detail) {
 }
 
 function inferCityFromAddress(address = '') {
-  const parts = address.split(',').map((item) => item.trim()).filter(Boolean);
+  const parts = sanitizeAddress(address).split(',').map((item) => item.trim()).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : '';
 }
 
 /** Chuẩn hóa đoạn địa chỉ (trim + gộp khoảng trắng, không đổi dấu tiếng Việt). */
 function normalizeAddressSegment(s) {
-  return String(s).replace(/\s+/g, ' ').trim().toLowerCase();
+  const normalized = String(s).replace(/\s+/g, ' ').trim().toLowerCase();
+  return normalized.replace(/^(thành phố|tp\.?)\s+/i, '');
+}
+
+/**
+ * Làm gọn địa chỉ:
+ * - bỏ khoảng trắng/dấu phẩy thừa
+ * - khử đoạn lặp theo cụm (vd: "Đà Nẵng, Đà Nẵng")
+ */
+function sanitizeAddress(address = '') {
+  const parts = String(address)
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return '';
+
+  const deduped = [];
+  parts.forEach((part) => {
+    const currentNorm = normalizeAddressSegment(part);
+    const prevNorm = normalizeAddressSegment(deduped[deduped.length - 1] || '');
+    if (currentNorm && currentNorm === prevNorm) return;
+    deduped.push(part);
+  });
+
+  return deduped.join(', ');
 }
 
 /**
  * Hiển thị / lưu một dòng địa chỉ kèm thành phố mà không lặp (vd: địa chỉ đã kết thúc bằng "Đà Nẵng" thì không thêm ", Đà Nẵng").
  */
 export function formatAddressWithCity(address = '', city = '') {
-  const addr = String(address).trim().replace(/,\s*$/, '');
+  const addr = sanitizeAddress(address);
   const cty = String(city).trim();
   if (!cty) return addr;
   if (!addr) return cty;
@@ -68,10 +92,10 @@ export function mapRoomFromApi(room) {
     title: room.title,
     price: Number(room.price || 0),
     area: Number(room.area_sqm || 0),
-    address: room.address || '',
+    address: sanitizeAddress(room.address || ''),
     latitude: hasExactLocation ? latRaw : null,
     longitude: hasExactLocation ? lngRaw : null,
-    city: inferCityFromAddress(room.address),
+    city: inferCityFromAddress(room.address || ''),
     type: normalizedType,
     images: imageUrls,
     amenities: [],

@@ -2,8 +2,31 @@ import React from 'react';
 import { X } from 'lucide-react';
 import RoomCard from './RoomCard';
 
+function normalizeAddressPart(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function dedupeAddressParts(address) {
+  const parts = String(address || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const deduped = [];
+  const seen = new Set();
+
+  parts.forEach((part) => {
+    const key = normalizeAddressPart(part);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(part);
+  });
+
+  return deduped.join(', ');
+}
+
 export default function NearbyCrawlRoomsModal({ open, rooms, userAddress, loading, onClose }) {
   if (!open) return null;
+  const normalizedUserAddress = dedupeAddressParts(userAddress);
 
   return (
     <div
@@ -23,8 +46,8 @@ export default function NearbyCrawlRoomsModal({ open, rooms, userAddress, loadin
             <h2 id="nearby-crawl-title" className="text-xl font-bold text-gray-900 leading-snug">
               Đã tìm thấy phòng trọ mới gần khu vực của bạn
             </h2>
-            {userAddress && (
-              <p className="text-sm text-gray-500 mt-1 line-clamp-2">📍 {userAddress}</p>
+            {normalizedUserAddress && (
+              <p className="text-sm text-gray-500 mt-1 line-clamp-2">📍 {normalizedUserAddress}</p>
             )}
           </div>
           <button

@@ -77,8 +77,8 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=256)
 
 
-class UserRegister(BaseModel):
-    """Đăng ký công khai — bắt buộc số điện thoại."""
+class UserRegistrationCodeRequest(BaseModel):
+    """Gửi mã xác thực đăng ký — bắt buộc số điện thoại."""
 
     full_name: str = Field(..., min_length=1, max_length=150)
     email: str = Field(..., min_length=3, max_length=255)
@@ -115,6 +115,20 @@ class UserRegister(BaseModel):
         if len(digits) < 9:
             raise ValueError("Số điện thoại phải có ít nhất 9 chữ số")
         return s
+
+
+class UserRegister(UserRegistrationCodeRequest):
+    """Đăng ký công khai sau khi đã nhận mã xác thực email."""
+
+    verification_code: str = Field(..., min_length=6, max_length=6)
+
+    @field_validator("verification_code", mode="before")
+    @classmethod
+    def normalize_verification_code(cls, v: object) -> str:
+        code = "".join(ch for ch in str(v or "") if ch.isdigit())
+        if len(code) != 6:
+            raise ValueError("Mã xác thực phải gồm 6 chữ số")
+        return code
 
 
 class UserUpdate(BaseModel):
