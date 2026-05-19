@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime
 
@@ -5,11 +6,37 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.database import SessionLocal
 from app.models import Message, Room, User
+from app.services.ai_chat_service import create_ai_auto_reply
 from app.services.auth_service import decode_access_token
 from app.services.chat_realtime import connection_manager
 from app.services.crawl_listing_service import room_is_crawled_listing, user_is_crawl_system_account
 
 router = APIRouter(tags=["chat"])
+
+
+def _message_payload(message: Message) -> dict:
+    return {
+        "type": "message",
+        "id": message.id,
+        "room_id": message.room_id,
+        "sender_id": message.sender_id,
+        "receiver_id": message.receiver_id,
+        "content": message.content,
+        "is_read": message.is_read,
+        "sent_at": message.sent_at.isoformat() if isinstance(message.sent_at, datetime) else None,
+    }
+
+
+def _create_ai_reply_payload(message_id: int) -> dict | None:
+    db = SessionLocal()
+    try:
+        saved_message = db.query(Message).filter(Message.id == message_id).first()
+        if not saved_message:
+            return None
+        ai_reply = create_ai_auto_reply(db=db, incoming_message=saved_message)
+        return _message_payload(ai_reply) if ai_reply else None
+    finally:
+        db.close()
 
 
 @router.websocket("/trohub/ws/chat/{room_id}")
@@ -95,17 +122,10 @@ async def chat_websocket(websocket: WebSocket, room_id: str):
             finally:
                 db.close()
 
-            await connection_manager.broadcast(
-                room_id=room_id,
-                message={
-                    "type": "message",
-                    "id": db_message.id,
-                    "room_id": db_room_id,
-                    "sender_id": sender_id,
-                    "receiver_id": receiver_id,
-                    "content": db_message.content,
-                    "sent_at": db_message.sent_at.isoformat() if isinstance(db_message.sent_at, datetime) else None,
-                },
-            )
+            await connection_manager.broadcast(room_id=room_id, message=_message_payload(db_message))
+
+            ai_reply_payload = await asyncio.to_thread(_create_ai_reply_payload, db_message.id)
+            if ai_reply_payload:
+                await connection_manager.broadcast(room_id=room_id, message=ai_reply_payload)
     except WebSocketDisconnect:
         connection_manager.disconnect(room_id=room_id, websocket=websocket)

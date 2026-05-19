@@ -15,6 +15,7 @@ from app.schemas import (
     MessageThreadReadOut,
 )
 from app.services.auth_service import get_current_active_user
+from app.services.ai_chat_service import create_ai_auto_reply
 from app.services.crawl_listing_service import room_is_crawled_listing, user_is_crawl_system_account
 from app.services.exceptions import NotFoundError
 from app.services.messages_service import (
@@ -69,7 +70,10 @@ def create_message(
         if room_is_crawled_listing(room, db):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot send message to a crawled room")
 
-    return create_message_service(db=db, sender_id=current_user.id, payload=payload)
+    created = create_message_service(db=db, sender_id=current_user.id, payload=payload)
+    create_ai_auto_reply(db=db, incoming_message=created)
+    db.refresh(created)
+    return created
 
 
 @router.get("/thread", response_model=list[MessageOut])

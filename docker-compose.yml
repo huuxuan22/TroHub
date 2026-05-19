@@ -59,6 +59,8 @@ services:
     volumes:
       - ./backend:/app
     env_file:
+      - path: ./.env
+        required: false
       - path: ./backend/.env
         required: false
     environment:

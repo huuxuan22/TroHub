@@ -18,6 +18,7 @@ import {
   Search, 
   CheckCheck,
   Check,
+  ExternalLink,
   User as UserIcon,
   Home
 } from 'lucide-react';
@@ -69,6 +70,147 @@ function formatTime(value) {
   } catch {
     return '';
   }
+}
+
+function extractField(line, label) {
+  const match = line.match(new RegExp(`${label}\\s+([^;\\n]+)`, 'i'));
+  return match?.[1]?.trim() || '';
+}
+
+function extractChatCards(content = '') {
+  return String(content)
+    .split('\n')
+    .map((line) => line.trim().replace(/^\d+[\.)]\s*/, ''))
+    .map((line) => {
+      const roomMatch = line.match(/^#(\d+)\s*-\s*([^;]+)/);
+      if (roomMatch) {
+        const roomId = roomMatch[1];
+        return {
+          type: 'room',
+          key: `room-${roomId}-${line}`,
+          title: roomMatch[2].trim(),
+          href: `/room/${roomId}`,
+          badge: `#${roomId}`,
+          price: extractField(line, 'giá'),
+          area: extractField(line, 'diện tích'),
+          address: extractField(line, 'địa chỉ'),
+          source: extractField(line, 'nguồn'),
+        };
+      }
+
+      const crawlMatch = line.match(/^(?:Tin crawl|crawl:\S+)\s*-\s*([^;]+)/i);
+      if (crawlMatch) {
+        const urlMatch = line.match(/(?:link nguồn\s+|crawl:)(https?:\/\/[^\s;]+)/i);
+        return {
+          type: 'crawl',
+          key: `crawl-${urlMatch?.[1] || crawlMatch[1]}-${line}`,
+          title: crawlMatch[1].trim(),
+          href: urlMatch?.[1] || '',
+          badge: 'Tin crawl',
+          price: extractField(line, 'giá'),
+          area: extractField(line, 'diện tích'),
+          address: extractField(line, 'địa chỉ'),
+          phone: line.match(/SĐT nguồn:\s*([^;\n]+)/i)?.[1]?.trim() || '',
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function renderLinkedText(content, mine) {
+  const text = String(content || '');
+  const pattern = /(https?:\/\/[^\s;]+|\/room\/\d+)/g;
+  const parts = text.split(pattern);
+
+  return parts.map((part, index) => {
+    if (!part) return null;
+    if (part.startsWith('/room/')) {
+      return (
+        <a
+          key={`${part}-${index}`}
+          href={part}
+          className={mine ? 'underline decoration-white/60 underline-offset-2' : 'text-blue-600 font-medium underline underline-offset-2'}
+        >
+          {part}
+        </a>
+      );
+    }
+    if (/^https?:\/\//i.test(part)) {
+      return (
+        <a
+          key={`${part}-${index}`}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          className={mine ? 'underline decoration-white/60 underline-offset-2 break-all' : 'text-blue-600 font-medium underline underline-offset-2 break-all'}
+        >
+          nguồn
+        </a>
+      );
+    }
+    return <React.Fragment key={`${index}-${part.slice(0, 8)}`}>{part}</React.Fragment>;
+  });
+}
+
+function ChatSuggestionCards({ cards }) {
+  if (!cards.length) return null;
+
+  return (
+    <div className="mt-2 space-y-2">
+      {cards.map((card) => (
+        <div key={card.key} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${card.type === 'room' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                  <Home size={11} />
+                  {card.badge}
+                </span>
+                {card.source && <span className="text-[10px] text-slate-400 truncate">{card.source}</span>}
+              </div>
+              <h4 className="text-[13px] font-semibold text-slate-900 leading-snug break-words">{card.title}</h4>
+            </div>
+            {card.href && (
+              <a
+                href={card.href}
+                target={card.type === 'crawl' ? '_blank' : undefined}
+                rel={card.type === 'crawl' ? 'noreferrer' : undefined}
+                className="shrink-0 w-8 h-8 rounded-full bg-white border border-slate-200 text-blue-600 hover:bg-blue-50 flex items-center justify-center"
+                aria-label={card.type === 'room' ? 'Xem chi tiết phòng' : 'Mở nguồn tin'}
+              >
+                <ExternalLink size={15} />
+              </a>
+            )}
+          </div>
+
+          <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+            {(card.price || card.area) && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {card.price && <span>{card.price}</span>}
+                {card.area && <span>{card.area}</span>}
+              </div>
+            )}
+            {card.address && <div className="line-clamp-2">{card.address}</div>}
+            {card.phone && <div className="font-medium text-slate-700">{card.phone}</div>}
+          </div>
+
+          {card.href && (
+            <a
+              href={card.href}
+              target={card.type === 'crawl' ? '_blank' : undefined}
+              rel={card.type === 'crawl' ? 'noreferrer' : undefined}
+              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700"
+            >
+              {card.type === 'room' ? 'Xem chi tiết' : 'Mở nguồn'} <ExternalLink size={12} />
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function ChatWidget() {
@@ -301,6 +443,19 @@ export default function ChatWidget() {
       });
       setMessages((prev) => [...prev, created]);
       setDraft('');
+      // AI trả lời qua REST (không qua WS) — tải lại thread sau vài giây
+      window.setTimeout(async () => {
+        try {
+          const thread = await fetchThreadMessages({
+            otherUserId: context.receiverId,
+            roomId: context.roomId,
+            limit: 100,
+          });
+          if (Array.isArray(thread)) setMessages(thread);
+        } catch {
+          /* bỏ qua */
+        }
+      }, 1500);
     } catch (err) {
       setError(err.message || 'Gửi tin nhắn thất bại.');
     } finally {
@@ -520,6 +675,7 @@ export default function ChatWidget() {
                   {sortedMessages.map((item, index) => {
                     const mine = Number(item.sender_id) === Number(user?.id);
                     const showAvatar = !mine && (index === 0 || Number(sortedMessages[index - 1]?.sender_id) !== Number(item.sender_id));
+                    const suggestionCards = mine ? [] : extractChatCards(item.content);
                     
                     return (
                       <div key={item.id} className={`flex w-full ${mine ? 'justify-end' : 'justify-start'}`}>
@@ -539,7 +695,10 @@ export default function ChatWidget() {
                               : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
                           }`}
                         >
-                          <p className="leading-relaxed whitespace-pre-wrap word-break">{item.content}</p>
+                          <p className="leading-relaxed whitespace-pre-wrap break-words">
+                            {renderLinkedText(item.content, mine)}
+                          </p>
+                          <ChatSuggestionCards cards={suggestionCards} />
                           <div className={`flex items-center justify-end gap-1 mt-1 ${mine ? 'text-blue-200' : 'text-slate-400'}`}>
                             <span className="text-[10px] select-none">
                               {formatTime(item.sent_at)}
