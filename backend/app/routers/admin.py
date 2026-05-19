@@ -33,6 +33,7 @@ from app.schemas import (
 )
 from app.services.auth_service import require_roles
 from app.services.exceptions import NotFoundError
+from app.services.room_moderation_service import moderate_room_for_approval
 from app.services.room_claim_service import ClaimError, approve_room_claim, list_room_claims
 from app.services.users_service import delete_user as delete_user_service
 
@@ -350,7 +351,17 @@ def admin_update_room_status(
     room = db.query(Room).filter(Room.id == room_id).first()
     if not room:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy phòng")
-    room.status = RoomStatus(payload.status.value)
+
+    next_status = RoomStatus(payload.status.value)
+    if next_status == RoomStatus.AVAILABLE:
+        moderation = moderate_room_for_approval(db=db, room_id=room_id)
+        if not moderation.approved:
+            detail = f"AI từ chối duyệt tin: {moderation.reason}"
+            if moderation.categories:
+                detail += f" ({', '.join(moderation.categories)})"
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+    room.status = next_status
     db.commit()
     db.refresh(room)
     return room

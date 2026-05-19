@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Amenity, CrawlData, RoomAmenity, RoomImage, User, UserRole
+from app.models import Amenity, CrawlData, RoomAmenity, RoomImage, RoomStatus, User, UserRole
 from app.schemas import (
     FeaturedHotRoomOut,
     NearbyCrawlRoomOut,
@@ -27,6 +27,7 @@ from app.services.auth_service import (
 from app.services.exceptions import NotFoundError
 from app.services.crawl_listing_service import room_is_crawled_listing
 from app.services.room_claim_service import ClaimError, create_room_claim
+from app.services.room_moderation_service import moderate_room_for_approval
 from app.services.rooms_service import (
     create_room as create_room_service,
     delete_room as delete_room_service,
@@ -39,6 +40,15 @@ router = APIRouter(prefix="/trohub/rooms", tags=["rooms"])
 
 
 # POST: chỉ admin hoặc chủ nhà đã duyệt (require_verified_landlord_or_admin).
+
+def _ensure_room_can_be_available(db: Session, room_id: int) -> None:
+    moderation = moderate_room_for_approval(db=db, room_id=room_id)
+    if not moderation.approved:
+        detail = f"AI từ chối hiển thị tin: {moderation.reason}"
+        if moderation.categories:
+            detail += f" ({', '.join(moderation.categories)})"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
 
 @router.post("", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
 def create_room(
@@ -55,6 +65,10 @@ def create_room(
     body.pop("landlord_id", None)
     image_urls = body.pop("image_urls", []) or []
     amenity_ids = body.pop("amenity_ids", []) or []
+    requested_status = body.get("status")
+    wants_available = str(getattr(requested_status, "value", requested_status)).lower() == "available"
+    if wants_available:
+        body["status"] = RoomStatusSchema.draft
 
     internal = RoomCreate(**body, landlord_id=landlord_id)
     room = create_room_service(db=db, payload=internal)
@@ -75,6 +89,12 @@ def create_room(
             db.add(RoomAmenity(room_id=room.id, amenity_id=aid))
 
     if image_urls or amenity_ids:
+        db.commit()
+        db.refresh(room)
+
+    if wants_available:
+        _ensure_room_can_be_available(db=db, room_id=room.id)
+        room.status = RoomStatus.AVAILABLE
         db.commit()
         db.refresh(room)
 
@@ -183,7 +203,21 @@ def update_room(
         data = payload.model_dump(exclude_unset=True)
         data.pop("landlord_id", None)
         payload = RoomUpdate(**data)
-    return update_room_service(db=db, room_id=room_id, payload=payload)
+
+    requested_status = payload.status
+    wants_available = str(getattr(requested_status, "value", requested_status)).lower() == "available"
+    if wants_available:
+        data = payload.model_dump(exclude_unset=True)
+        data["status"] = RoomStatusSchema.draft
+        payload = RoomUpdate(**data)
+
+    updated = update_room_service(db=db, room_id=room_id, payload=payload)
+    if wants_available:
+        _ensure_room_can_be_available(db=db, room_id=updated.id)
+        updated.status = RoomStatus.AVAILABLE
+        db.commit()
+        db.refresh(updated)
+    return updated
 
 
 @router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)

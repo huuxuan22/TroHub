@@ -74,11 +74,11 @@ export default function AdminRoomsPage() {
 
   const handleStatus = async (roomId, newStatus) => {
     setBusyId(roomId);
-    setMessage('');
+    setMessage(newStatus === 'available' ? 'Đang kiểm duyệt nội dung và ảnh bằng AI...' : '');
     setError('');
     try {
       await updateRoomStatus(roomId, newStatus);
-      setMessage('Đã cập nhật trạng thái phòng.');
+      setMessage(newStatus === 'available' ? 'AI đã duyệt tin, phòng đã được hiển thị.' : 'Đã cập nhật trạng thái phòng.');
       await load();
     } catch (e) {
       setError(e.message || 'Cập nhật thất bại');
@@ -109,7 +109,7 @@ export default function AdminRoomsPage() {
         <p className="text-sm font-semibold text-blue-600">Tin đăng</p>
         <h1 className="text-2xl font-bold text-slate-900">Quản lý phòng / tin đăng</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Ẩn, hiển thị, đánh dấu hết hạn hoặc xoá các tin vi phạm chính sách.
+          Khi chuyển tin sang hiển thị, AI sẽ kiểm duyệt nội dung và ảnh trước khi duyệt.
         </p>
       </div>
 

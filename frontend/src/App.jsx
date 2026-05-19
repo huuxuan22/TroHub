@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { FavoritesProvider } from './contexts/FavoritesContext';
 import Navbar from './components/layout/Navbar';
-import Footer from './components/layout/Footer';
 import ChatWidget from './components/common/ChatWidget';
 import HomePage from './pages/HomePage';
 import SearchPage from './pages/SearchPage';
@@ -53,7 +52,7 @@ function NotFoundPage() {
 }
 
 function AppShell() {
-  // Khu vực admin chỉ giữ Navbar, ẩn Footer + ChatWidget cho gọn dashboard.
+  // Khu vực admin chỉ giữ Navbar, ẩn ChatWidget cho gọn dashboard.
   const location = useLocation();
   const isAdminArea = location.pathname.startsWith('/admin');
 
@@ -137,7 +136,6 @@ function AppShell() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </div>
-      {!isAdminArea && <Footer />}
       {!isAdminArea && <ChatWidget />}
     </div>
   );
