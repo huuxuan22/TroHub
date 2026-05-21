@@ -104,6 +104,8 @@ def _build_room_filter_query(
     keyword: str | None,
     min_price: float | None,
     max_price: float | None,
+    min_area: float | None,
+    max_area: float | None,
     status: str | None,
     room_type: str | None,
     landlord_id: int | None,
@@ -112,10 +114,16 @@ def _build_room_filter_query(
     cho cả list (có sort + offset/limit) và count tổng phục vụ pagination."""
     query = db.query(Room)
 
+    if min_price is not None or max_price is not None:
+        query = query.filter(Room.price > 0)
     if min_price is not None:
         query = query.filter(Room.price >= min_price)
     if max_price is not None:
         query = query.filter(Room.price <= max_price)
+    if min_area is not None:
+        query = query.filter(Room.area_sqm.isnot(None), Room.area_sqm >= min_area)
+    if max_area is not None:
+        query = query.filter(Room.area_sqm.isnot(None), Room.area_sqm <= max_area)
     if status:
         query = query.filter(Room.status == _to_domain_room_status(status))
     if room_type:
@@ -133,6 +141,8 @@ def list_rooms(
     keyword: str | None = None,
     min_price: float | None = None,
     max_price: float | None = None,
+    min_area: float | None = None,
+    max_area: float | None = None,
     status: str | None = None,
     room_type: str | None = None,
     landlord_id: int | None = None,
@@ -144,6 +154,8 @@ def list_rooms(
         keyword=keyword,
         min_price=min_price,
         max_price=max_price,
+        min_area=min_area,
+        max_area=max_area,
         status=status,
         room_type=room_type,
         landlord_id=landlord_id,

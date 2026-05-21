@@ -236,7 +236,10 @@ def _collect_detail_images(soup: BeautifulSoup, page_url: str) -> list[str]:
             best[key] = _pick_better_photo(best[key], u)
 
     ordered = list(dict.fromkeys(best.values()))
-    return ordered[:15]
+    large_gallery_images = [u for u in ordered if "900x600" in u]
+    if large_gallery_images:
+        return large_gallery_images[:15]
+    return ordered[:8]
 
 
 def parse_detail_page(html: str, url: str) -> dict:

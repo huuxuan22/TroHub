@@ -109,6 +109,8 @@ def list_rooms(
     keyword: str | None = Query(default=None),
     min_price: float | None = Query(default=None, ge=0),
     max_price: float | None = Query(default=None, ge=0),
+    min_area: float | None = Query(default=None, ge=0),
+    max_area: float | None = Query(default=None, ge=0),
     status_filter: RoomStatusSchema | None = Query(default=None, alias="status"),
     room_type: str | None = Query(default=None),
     landlord_id: int | None = Query(default=None, ge=1),
@@ -118,6 +120,8 @@ def list_rooms(
 ):
     if min_price is not None and max_price is not None and min_price > max_price:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="min_price cannot be greater than max_price")
+    if min_area is not None and max_area is not None and min_area > max_area:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="min_area cannot be greater than max_area")
 
     rooms, total = list_rooms_service(
         db=db,
@@ -126,6 +130,8 @@ def list_rooms(
         keyword=keyword,
         min_price=min_price,
         max_price=max_price,
+        min_area=min_area,
+        max_area=max_area,
         status=status_filter.value if status_filter else None,
         room_type=room_type,
         landlord_id=landlord_id,

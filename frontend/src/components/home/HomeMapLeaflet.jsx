@@ -14,10 +14,26 @@ function formatMarkerPrice(price) {
   return `${price} đ`;
 }
 
-function makePriceIcon(price, selected) {
+function makePriceIcon(price, selected, highlighted) {
   const label = formatMarkerPrice(price);
-  const border = selected ? '2px solid #2563eb' : '2px solid #fff';
-  const shadow = selected ? '0 4px 14px rgba(37,99,235,0.35)' : '0 2px 10px rgba(0,0,0,0.18)';
+  
+  let border = '2px solid #fff';
+  let shadow = '0 2px 10px rgba(0,0,0,0.18)';
+  let bg = '#fff';
+  let color = '#0f172a';
+  let emoji = '🛏';
+  
+  if (highlighted) {
+    bg = 'linear-gradient(135deg, #ec4899, #ef4444)'; // beautiful rose to red gradient
+    color = '#fff';
+    border = selected ? '2px solid #fff' : '2px solid #fecdd3';
+    shadow = '0 0 14px rgba(239, 68, 68, 0.6)';
+    emoji = '🔥';
+  } else if (selected) {
+    border = '2px solid #2563eb';
+    shadow = '0 4px 14px rgba(37,99,235,0.35)';
+  }
+
   // Đủ kích thước + iconAnchor để Leaflet nhận click (iconSize [0,0] khiến marker gần như không bấm được).
   const w = 168;
   const h = 52;
@@ -26,13 +42,23 @@ function makePriceIcon(price, selected) {
     html: `
       <div style="width:${w}px;height:${h}px;display:flex;align-items:flex-start;justify-content:center;
         pointer-events:auto;box-sizing:border-box;padding-top:2px;">
-        <div style="display:flex;align-items:center;gap:6px;background:#fff;padding:6px 12px;border-radius:999px;
-          box-shadow:${shadow};border:${border};font-weight:600;font-size:13px;color:#0f172a;white-space:nowrap;
+        <div class="${highlighted ? 'trohub-marker-highlight-pulse' : ''}" style="display:flex;align-items:center;gap:6px;background:${bg};padding:6px 12px;border-radius:999px;
+          box-shadow:${shadow};border:${border};font-weight:700;font-size:13px;color:${color};white-space:nowrap;
           font-family:system-ui,-apple-system,sans-serif;cursor:pointer;">
-          <span style="font-size:14px;line-height:1;">🛏</span>
+          <span style="font-size:14px;line-height:1;">${emoji}</span>
           <span>${label}</span>
         </div>
-      </div>`,
+      </div>
+      <style>
+        .trohub-marker-highlight-pulse {
+          animation: marker-pulse-glow 1.8s infinite;
+        }
+        @keyframes marker-pulse-glow {
+          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); }
+          70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+      </style>`,
     iconSize: [w, h],
     iconAnchor: [w / 2, h],
   });
@@ -86,10 +112,10 @@ function FlyToSelected({ room, center, enabled }) {
   return null;
 }
 
-function RoomMarker({ room, selected, onSelect }) {
+function RoomMarker({ room, selected, highlighted, onSelect }) {
   const icon = useMemo(
-    () => makePriceIcon(room.price, selected),
-    [room.price, selected],
+    () => makePriceIcon(room.price, selected, highlighted),
+    [room.price, selected, highlighted],
   );
   const position = useMemo(() => getRoomLatLng(room), [room.id, room.latitude, room.longitude]);
 
@@ -99,7 +125,7 @@ function RoomMarker({ room, selected, onSelect }) {
     <Marker
       position={position}
       icon={icon}
-      zIndexOffset={selected ? 1000 : 0}
+      zIndexOffset={selected ? 1000 : highlighted ? 500 : 0}
       eventHandlers={{ click: () => onSelect(room.id) }}
     />
   );
@@ -111,6 +137,7 @@ export default function HomeMapLeaflet({
   onSelectRoom,
   panToSelection,
   userLocation,
+  highlightedRoomIds = [],
 }) {
   const mappableRooms = useMemo(
     () => rooms.filter((room) => getRoomLatLng(room)),
@@ -173,6 +200,7 @@ export default function HomeMapLeaflet({
             key={room.id}
             room={room}
             selected={selectedId === room.id}
+            highlighted={highlightedRoomIds.includes(room.id)}
             onSelect={onSelectRoom}
           />
         ))}

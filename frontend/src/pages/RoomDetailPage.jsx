@@ -141,12 +141,22 @@ export default function RoomDetailPage() {
 
   const handleOpenChat = () => {
     setChatError('');
-    if (isCrawledListing) {
-      setChatError('Tin từ nguồn crawl — vui lòng gọi điện hoặc nhắn SMS/Zalo theo số hiển thị.');
-      return;
-    }
     if (!user) {
       navigate('/login');
+      return;
+    }
+
+    if (isCrawledListing) {
+      window.dispatchEvent(
+        new CustomEvent('trohub:open-chat', {
+          detail: {
+            routeToAdmin: true,
+            roomId: room.id,
+            roomTitle: room.title,
+            initialMessage: `Tôi cần hỗ trợ về phòng không dùng hệ thống: ${room.title} (/room/${room.id})`,
+          },
+        }),
+      );
       return;
     }
 
@@ -495,19 +505,13 @@ export default function RoomDetailPage() {
                   </button>
                 )}
 
-                {!isCrawledListing ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenChat}
-                    className="w-full border-2 border-blue-200 text-blue-600 hover:bg-blue-50 py-3 rounded-xl font-medium transition-colors duration-200 flex items-center justify-center gap-2"
-                  >
-                    Nhắn tin qua TroHub
-                  </button>
-                ) : (
-                  <p className="text-xs text-center text-gray-500 px-2">
-                    Chat chỉ mở khi chủ trọ claim tin và được admin duyệt.
-                  </p>
-                )}
+                <button
+                  type="button"
+                  onClick={handleOpenChat}
+                  className="w-full border-2 border-blue-200 text-blue-600 hover:bg-blue-50 py-3 rounded-xl font-medium transition-colors duration-200 flex items-center justify-center gap-2"
+                >
+                  {isCrawledListing ? 'Nhắn tin với admin qua TroHub' : 'Nhắn tin qua TroHub'}
+                </button>
 
                 {isCrawledListing && isLandlordRole && (
                   <button

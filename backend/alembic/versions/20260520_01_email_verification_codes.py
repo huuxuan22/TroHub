@@ -2,13 +2,14 @@
 
 Revision ID: 20260520_01
 Revises: 9d12af989c2f
-Create Date: 2026-05-20
-"""
+Create Date: 2026-05-20 01:00:00.000000
 
+"""
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
+
 
 revision: str = "20260520_01"
 down_revision: Union[str, None] = "9d12af989c2f"
@@ -24,13 +25,14 @@ def _has_table(table_name: str) -> bool:
 def upgrade() -> None:
     if _has_table("email_verification_codes"):
         return
+
     op.create_table(
         "email_verification_codes",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("email", sa.String(length=255), nullable=False),
-        sa.Column("purpose", sa.String(length=50), nullable=False),
+        sa.Column("purpose", sa.String(length=50), nullable=False, server_default="registration"),
         sa.Column("code_hash", sa.String(length=128), nullable=False),
-        sa.Column("attempts", sa.SmallInteger(), server_default=sa.text("0"), nullable=False),
+        sa.Column("attempts", sa.SmallInteger(), nullable=False, server_default=sa.text("0")),
         sa.Column("expires_at", sa.DateTime(), nullable=False),
         sa.Column("consumed_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -40,6 +42,7 @@ def upgrade() -> None:
         "ix_email_verification_codes_email_purpose",
         "email_verification_codes",
         ["email", "purpose"],
+        unique=False,
     )
 
 

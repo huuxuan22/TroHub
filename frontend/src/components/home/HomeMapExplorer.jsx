@@ -57,9 +57,42 @@ export default function HomeMapExplorer() {
   const [selectedId, setSelectedId] = useState(null);
   const [mapPanUser, setMapPanUser] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [locationError, setLocationError] = useState('');
+  const [newCrawledRooms, setNewCrawledRooms] = useState(() => {
+    try {
+      const stored = localStorage.getItem('trohub_new_crawled_rooms');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const searchStartTimeRef = useRef(null);
+
+  const resetNewCrawledRooms = () => {
+    setNewCrawledRooms([]);
+    localStorage.removeItem('trohub_new_crawled_rooms');
+    localStorage.removeItem('trohub_show_hot_deals_new_rooms');
+  };
+
   const { requestLocation, loading: locating } = useGeolocation();
   const listScrollRef = useRef(null);
+  const crawlRefreshTimersRef = useRef([]);
+  const lastNearMeCrawlKeyRef = useRef('');
+
+  const clearCrawlRefreshTimers = () => {
+    crawlRefreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    crawlRefreshTimersRef.current = [];
+  };
+
+  const scheduleCrawlResultRefresh = () => {
+    clearCrawlRefreshTimers();
+    crawlRefreshTimersRef.current = [25000, 60000, 100000].map((delay) =>
+      window.setTimeout(() => setRefreshNonce((value) => value + 1), delay),
+    );
+  };
+
+  useEffect(() => clearCrawlRefreshTimers, []);
 
   useEffect(() => {
     if (!selectedId || !listScrollRef.current) return;
@@ -79,9 +112,65 @@ export default function HomeMapExplorer() {
           limit: 80,
         });
         if (!cancelled) {
+          if (searchStartTimeRef.current) {
+            // Find newly crawled rooms
+            const newCrawled = data.filter((room) => {
+              if (room.source !== 'crawl') return false;
+              // Check if created after search start time (with 10s clock drift buffer)
+              const roomTime = new Date(room.postedAt);
+              if (roomTime < new Date(searchStartTimeRef.current.getTime() - 10000)) return false;
+              
+              // Verify room is relevant to user's search or location
+              if (userLocation) {
+                const dist = haversineDistanceKm(
+                  userLocation.latitude,
+                  userLocation.longitude,
+                  room.latitude,
+                  room.longitude
+                );
+                if (dist <= 10) return true;
+              }
+              const q = locationQuery.trim();
+              if (q && roomMatchesLocationQuery(room, q)) {
+                return true;
+              }
+              return false;
+            });
+
+            if (newCrawled.length > 0) {
+              setNewCrawledRooms((prev) => {
+                const existingIds = new Set(prev.map((r) => r.id));
+                const merged = [...prev];
+                newCrawled.forEach((r) => {
+                  if (!existingIds.has(r.id)) {
+                    // Add badge info based on how it was found
+                    if (userLocation) {
+                      const dist = haversineDistanceKm(
+                        userLocation.latitude,
+                        userLocation.longitude,
+                        r.latitude,
+                        r.longitude
+                      );
+                      if (dist <= 10) {
+                        r.customBadge = { type: 'near_me', label: '📍 GẦN BẠN' };
+                      } else {
+                        r.customBadge = { type: 'new_crawl', label: '✨ MỚI CÀO' };
+                      }
+                    } else {
+                      r.customBadge = { type: 'new_crawl', label: '✨ MỚI CÀO' };
+                    }
+                    merged.push(r);
+                  }
+                });
+                localStorage.setItem('trohub_new_crawled_rooms', JSON.stringify(merged));
+                localStorage.setItem('trohub_show_hot_deals_new_rooms', 'true');
+                return merged;
+              });
+            }
+          }
           setRooms(data);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) setRooms([]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -90,7 +179,7 @@ export default function HomeMapExplorer() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshNonce, userLocation, locationQuery]);
 
   const filtered = useMemo(() => {
     const q = locationQuery.trim();
@@ -115,11 +204,39 @@ export default function HomeMapExplorer() {
 
   const handleUseMyLocation = async () => {
     setLocationError('');
+    resetNewCrawledRooms();
+    searchStartTimeRef.current = new Date();
     try {
       const pos = await requestLocation();
       setUserLocation(pos);
       setMapPanUser(false); // không pan tới room đã chọn, để map tự bay tới user
       await persistUserLocationIfAuthenticated(pos, { refreshUser });
+      const crawlKey = JSON.stringify({
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        purpose,
+        budgetMin,
+        budgetMax,
+        locationQuery,
+      });
+      if (crawlKey !== lastNearMeCrawlKeyRef.current) {
+        lastNearMeCrawlKeyRef.current = crawlKey;
+        recordSearchHistory({
+          keyword: locationQuery || undefined,
+          filters: {
+            source: 'home_map',
+            purpose,
+            budget_min: budgetMin,
+            budget_max: budgetMax,
+            near_me: true,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            accuracy: pos.accuracy,
+          },
+          result_count: filtered.length,
+        });
+        scheduleCrawlResultRefresh();
+      }
     } catch (err) {
       setLocationError(err.message || 'Không lấy được vị trí.');
     }
@@ -128,6 +245,8 @@ export default function HomeMapExplorer() {
   const clearUserLocation = () => {
     setUserLocation(null);
     setLocationError('');
+    lastNearMeCrawlKeyRef.current = '';
+    clearCrawlRefreshTimers();
   };
 
   const exactLocationCount = useMemo(
@@ -165,6 +284,8 @@ export default function HomeMapExplorer() {
 
   const handleLocationApply = ({ query, city, kind }) => {
     if (kind === 'clear') return;
+    resetNewCrawledRooms();
+    searchStartTimeRef.current = new Date();
     const q = (query || '').trim();
     const matchCount = rooms.filter((r) => {
       if (purpose === 'stays' && r.type !== 'Phòng trọ') return false;
@@ -395,6 +516,7 @@ export default function HomeMapExplorer() {
           onSelectRoom={selectRoomFromUser}
           panToSelection={mapPanUser}
           userLocation={userLocation}
+          highlightedRoomIds={newCrawledRooms.map((r) => r.id)}
         />
       </section>
     </div>
