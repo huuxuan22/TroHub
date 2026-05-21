@@ -90,6 +90,10 @@ def _get_or_create_crawl_landlord(session: Session) -> int:
     return user.id
 
 
+def _room_by_source_url(session: Session, source_url: str) -> Room | None:
+    return session.scalar(select(Room).where(Room.source_url == source_url).limit(1))
+
+
 def _room_already_exists(session: Session, *, source_url: str, title_for_room: str) -> bool:
     q = select(Room.id).where(
         or_(
@@ -98,6 +102,28 @@ def _room_already_exists(session: Session, *, source_url: str, title_for_room: s
         )
     )
     return session.scalar(q.limit(1)) is not None
+
+
+def _sync_room_images(session: Session, room: Room, image_urls: list[str]) -> None:
+    target_urls: list[str] = []
+    seen_img: set[str] = set()
+    for raw_u in image_urls:
+        u = _truncate(raw_u, 600)
+        if not u or u in seen_img:
+            continue
+        seen_img.add(u)
+        target_urls.append(u)
+
+    current_urls = [image.image_url for image in room.images]
+    if current_urls == target_urls:
+        return
+
+    room.images[:] = []
+    session.flush()
+
+    for url in target_urls:
+        room.images.append(RoomImage(image_url=url))
+    session.flush()
 
 
 def _get_or_create_amenity(session: Session, display_name: str) -> Amenity | None:
@@ -124,6 +150,14 @@ def normalize_one_crawl_url(session: Session, url: str, landlord_id: int) -> Out
         return "missing"
 
     title_room = _truncate(row.title or "", 255)
+    image_urls = parse_images_field_to_list(row.images)
+
+    existing_by_source = _room_by_source_url(session, row.url)
+    if existing_by_source is not None:
+        if image_urls:
+            _sync_room_images(session, existing_by_source, image_urls)
+        return "skipped"
+
     if _room_already_exists(session, source_url=row.url, title_for_room=title_room):
         return "skipped"
 
@@ -156,14 +190,7 @@ def normalize_one_crawl_url(session: Session, url: str, landlord_id: int) -> Out
     session.add(room)
     session.flush()
 
-    image_urls = parse_images_field_to_list(row.images)
-    seen_img: set[str] = set()
-    for raw_u in image_urls:
-        u = _truncate(raw_u, 600)
-        if not u or u in seen_img:
-            continue
-        seen_img.add(u)
-        session.add(RoomImage(room_id=room.id, image_url=u))
+    _sync_room_images(session, room, image_urls)
 
     tokens = parse_amenity_tokens(row.amenities)
     seen_am: set[str] = set()

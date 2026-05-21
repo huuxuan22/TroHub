@@ -6,6 +6,8 @@ const BADGE_STYLES = {
   hot: 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/35',
   sale: 'bg-gradient-to-r from-blue-500 to-sky-400 text-white shadow-md shadow-blue-400/35',
   featured: 'bg-gradient-to-r from-blue-700 to-blue-600 text-white shadow-md shadow-blue-600/35',
+  near_me: 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-500/35',
+  new_crawl: 'bg-gradient-to-r from-rose-600 to-pink-500 text-white shadow-md shadow-pink-500/35',
 };
 
 function formatPrice(price) {
@@ -18,7 +20,8 @@ export default function HotDealRoomCard({ room, badge, discountPct, index = 0, o
   const [imgError, setImgError] = useState(false);
   const navigate = useNavigate();
   const image = room.images?.[0];
-  const badgeStyle = BADGE_STYLES[badge?.type] || BADGE_STYLES.featured;
+  const activeBadge = room.customBadge || badge;
+  const badgeStyle = BADGE_STYLES[activeBadge?.type] || BADGE_STYLES.featured;
 
   const goToDetail = () => {
     if (!room?.id) return;
@@ -56,7 +59,7 @@ export default function HotDealRoomCard({ room, badge, discountPct, index = 0, o
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/55 via-transparent to-transparent opacity-90" />
         <span className={`absolute top-3 left-3 text-[11px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full ${badgeStyle}`}>
-          {badge?.label}
+          {activeBadge?.label}
         </span>
         {discountPct > 0 && (
           <span className="absolute top-3 right-3 text-xs font-black bg-white text-blue-600 px-2 py-1 rounded-lg shadow-md">

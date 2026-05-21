@@ -99,7 +99,11 @@ def _upgrade_db_schema() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await asyncio.to_thread(_upgrade_db_schema)
+    run_migrations = os.getenv("RUN_ALEMBIC_ON_STARTUP", "").strip().lower() in ("1", "true", "yes")
+    if run_migrations:
+        await asyncio.to_thread(_upgrade_db_schema)
+    else:
+        _log.info("Skipping Alembic upgrade on startup; set RUN_ALEMBIC_ON_STARTUP=1 to enable.")
     yield
 
 

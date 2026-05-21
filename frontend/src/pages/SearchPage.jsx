@@ -30,15 +30,17 @@ export default function SearchPage() {
   const [error, setError] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const [page, setPage] = useState(1);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const resultsTopRef = useRef(null);
+  const crawlRefreshTimersRef = useRef([]);
+  const lastRecordedSearchKeyRef = useRef('');
+  const lastNearMeCrawlKeyRef = useRef('');
   const [filters, setFilters] = useState({
     type: '',
     city: '',
     priceRange: null,
-    amenities: [],
     minArea: '',
     maxArea: '',
-    verified: false,
     sortBy: 'newest',
   });
   const query = searchParams.get('q') || '';
@@ -52,7 +54,7 @@ export default function SearchPage() {
     setLocationError('');
     try {
       const pos = await requestLocation();
-      setNearMe({ latitude: pos.latitude, longitude: pos.longitude });
+      setNearMe({ latitude: pos.latitude, longitude: pos.longitude, accuracy: pos.accuracy });
       await persistUserLocationIfAuthenticated(pos, { refreshUser });
     } catch (err) {
       setLocationError(err.message || 'Không lấy được vị trí.');
@@ -62,7 +64,23 @@ export default function SearchPage() {
   const disableNearMe = () => {
     setNearMe(null);
     setLocationError('');
+    lastNearMeCrawlKeyRef.current = '';
+    clearCrawlRefreshTimers();
   };
+
+  const clearCrawlRefreshTimers = () => {
+    crawlRefreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    crawlRefreshTimersRef.current = [];
+  };
+
+  const scheduleCrawlResultRefresh = () => {
+    clearCrawlRefreshTimers();
+    crawlRefreshTimersRef.current = [25000, 60000, 100000].map((delay) =>
+      window.setTimeout(() => setRefreshNonce((value) => value + 1), delay),
+    );
+  };
+
+  useEffect(() => clearCrawlRefreshTimers, []);
 
   // Tính khoảng cách & sắp theo gần nhất khi có toạ độ user.
   const orderedRooms = useMemo(() => {
@@ -94,6 +112,8 @@ export default function SearchPage() {
       try {
         const range = filters.priceRange !== null && filters.priceRange !== undefined ? PRICE_RANGES[filters.priceRange] : null;
         const keyword = [query, city, filters.city].filter(Boolean).join(' ').trim();
+        const minArea = filters.minArea === '' ? undefined : Number(filters.minArea);
+        const maxArea = filters.maxArea === '' ? undefined : Number(filters.maxArea);
 
         const sortByMap = {
           newest: { sort_by: 'created_at', sort_order: 'desc' },
@@ -106,46 +126,52 @@ export default function SearchPage() {
           keyword,
           min_price: range?.min,
           max_price: range?.max,
+          min_area: Number.isFinite(minArea) ? minArea : undefined,
+          max_area: Number.isFinite(maxArea) ? maxArea : undefined,
+          status: 'available',
+          room_type: filters.type || undefined,
           ...sortParams,
-          skip: (page - 1) * PAGE_SIZE,
-          limit: PAGE_SIZE,
+          skip: nearMe ? 0 : (page - 1) * PAGE_SIZE,
+          limit: nearMe ? 100 : PAGE_SIZE,
         });
-        let results = fetched;
-
-        if (filters.type) {
-          results = results.filter((r) => r.type === filters.type);
-        }
-        if (filters.verified) {
-          results = results.filter((r) => r.isVerified);
-        }
-        if (filters.minArea) {
-          results = results.filter((r) => r.area >= Number(filters.minArea));
-        }
-        if (filters.maxArea) {
-          results = results.filter((r) => r.area <= Number(filters.maxArea));
-        }
-        setRooms(results);
+        setRooms(fetched);
         setTotalServer(total ?? fetched.length);
 
-        if (page === 1) {
-          recordSearchHistory({
+        const historyPayload = {
             keyword: query || undefined,
             city: city || filters.city || undefined,
             filters: {
               type: filters.type || undefined,
               priceRange: filters.priceRange,
-              amenities: filters.amenities,
               minArea: filters.minArea || undefined,
               maxArea: filters.maxArea || undefined,
-              verified: filters.verified,
               sortBy: filters.sortBy,
               min_price: range?.min,
               max_price: range?.max,
+              min_area: Number.isFinite(minArea) ? minArea : undefined,
+              max_area: Number.isFinite(maxArea) ? maxArea : undefined,
               near_me: Boolean(nearMe),
+              latitude: nearMe?.latitude,
+              longitude: nearMe?.longitude,
+              accuracy: nearMe?.accuracy,
               query: query || undefined,
             },
-            result_count: total ?? results.length,
-          });
+            result_count: total ?? fetched.length,
+          };
+        const historyKey = JSON.stringify({
+          keyword: historyPayload.keyword || null,
+          city: historyPayload.city || null,
+          filters: historyPayload.filters,
+        });
+
+        if (page === 1 && historyKey !== lastRecordedSearchKeyRef.current) {
+          lastRecordedSearchKeyRef.current = historyKey;
+          recordSearchHistory(historyPayload);
+        }
+
+        if (page === 1 && nearMe && historyKey !== lastNearMeCrawlKeyRef.current) {
+          lastNearMeCrawlKeyRef.current = historyKey;
+          scheduleCrawlResultRefresh();
         }
       } catch (err) {
         setError('Không thể tải dữ liệu từ server. Vui lòng thử lại.');
@@ -157,13 +183,13 @@ export default function SearchPage() {
     };
 
     loadRooms();
-  }, [query, city, filters, page]);
+  }, [query, city, filters, page, nearMe, refreshNonce]);
 
   // Reset về trang 1 khi đổi từ khoá / city / bộ lọc — tránh hiển thị trang
   // trống do số tổng giảm đi.
   useEffect(() => {
     setPage(1);
-  }, [query, city, filters]);
+  }, [query, city, filters, nearMe]);
 
   const totalPages = Math.max(1, Math.ceil(totalServer / PAGE_SIZE));
 

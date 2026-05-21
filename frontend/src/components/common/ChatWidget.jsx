@@ -9,7 +9,7 @@ import {
   fetchSupportAdmin,
   createConversation,
 } from '../../services/messageApi';
-import { fetchRoomContact } from '../../services/roomApi';
+import { fetchRoomContact, fetchRoomDetail } from '../../services/roomApi';
 import { 
   MessageCircle, 
   X, 
@@ -20,7 +20,12 @@ import {
   Check,
   ExternalLink,
   User as UserIcon,
-  Home
+  Home,
+  ImageIcon,
+  MapPin,
+  Ruler,
+  DollarSign,
+  Phone
 } from 'lucide-react';
 
 const CHAT_CONTEXT_KEY = 'trohub_chat_context';
@@ -28,13 +33,16 @@ const CHAT_CONTEXT_KEY = 'trohub_chat_context';
 function toContext(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const roomId = raw.roomId ? Number(raw.roomId) : null;
-  const receiverId = Number(raw.receiverId);
-  if (!Number.isFinite(receiverId)) return null;
+  const receiverId = raw.receiverId == null ? null : Number(raw.receiverId);
+  const routeToAdmin = Boolean(raw.routeToAdmin);
+  if (!routeToAdmin && !Number.isFinite(receiverId)) return null;
   return {
     roomId,
-    receiverId,
-    receiverName: raw.receiverName || `User #${receiverId}`,
+    receiverId: Number.isFinite(receiverId) ? receiverId : null,
+    receiverName: raw.receiverName || (Number.isFinite(receiverId) ? `User #${receiverId}` : 'Admin'),
     roomTitle: raw.roomTitle || (roomId ? `Phòng #${roomId}` : 'Trò chuyện'),
+    routeToAdmin,
+    initialMessage: raw.initialMessage || '',
   };
 }
 
@@ -53,7 +61,8 @@ function storeContext(context) {
     localStorage.removeItem(CHAT_CONTEXT_KEY);
     return;
   }
-  localStorage.setItem(CHAT_CONTEXT_KEY, JSON.stringify(context));
+  const { initialMessage, routeToAdmin, ...persistable } = context;
+  localStorage.setItem(CHAT_CONTEXT_KEY, JSON.stringify(persistable));
 }
 
 function formatTime(value) {
@@ -105,13 +114,14 @@ function sanitizeAddress(address = '') {
 function extractChatCards(content = '') {
   return String(content)
     .split('\n')
-    .map((line) => line.trim().replace(/^\d+[\.)]\s*/, ''))
+    .map((line) => line.trim().replace(/^[-*]\s*/, '').replace(/^\d+[\.)]\s*/, '').replace(/^\*\*(.*)\*\*$/, '$1'))
     .map((line) => {
       const roomMatch = line.match(/^#(\d+)\s*-\s*([^;]+)/);
       if (roomMatch) {
         const roomId = roomMatch[1];
         return {
           type: 'room',
+          roomId,
           key: `room-${roomId}-${line}`,
           title: roomMatch[2].trim(),
           href: `/room/${roomId}`,
@@ -143,6 +153,36 @@ function extractChatCards(content = '') {
     })
     .filter(Boolean)
     .slice(0, 5);
+}
+
+function stripCardLines(content = '') {
+  return String(content)
+    .split('\n')
+    .filter((line) => extractChatCards(line).length === 0)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function formatCardPrice(value) {
+  if (!value) return '';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return String(value);
+  if (numeric >= 1000000) return `${(numeric / 1000000).toFixed(1).replace('.0', '')} triệu/tháng`;
+  return `${Math.round(numeric / 1000)}k/tháng`;
+}
+
+function mergeRoomDetail(card, detail) {
+  if (!detail) return card;
+  return {
+    ...card,
+    title: detail.title || card.title,
+    price: formatCardPrice(detail.price) || card.price,
+    area: detail.area ? `${detail.area} m²` : card.area,
+    address: detail.address || card.address,
+    image: detail.images?.[0] || card.image,
+    source: detail.source || card.source,
+  };
 }
 
 function renderLinkedText(content, mine) {
@@ -238,6 +278,121 @@ function ChatSuggestionCards({ cards }) {
   );
 }
 
+function RichChatSuggestionCards({ cards }) {
+  const [roomDetails, setRoomDetails] = useState({});
+
+  useEffect(() => {
+    let active = true;
+    const missingRoomIds = cards
+      .filter((card) => card.type === 'room' && card.roomId && !roomDetails[card.roomId])
+      .map((card) => card.roomId);
+
+    if (!missingRoomIds.length) return undefined;
+
+    Promise.allSettled(
+      [...new Set(missingRoomIds)].map(async (roomId) => {
+        const { room } = await fetchRoomDetail(roomId);
+        return [roomId, room];
+      }),
+    ).then((results) => {
+      if (!active) return;
+      const nextDetails = {};
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const [roomId, room] = result.value;
+          nextDetails[roomId] = room;
+        }
+      });
+      if (Object.keys(nextDetails).length) {
+        setRoomDetails((prev) => ({ ...prev, ...nextDetails }));
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [cards, roomDetails]);
+
+  if (!cards.length) return null;
+
+  return (
+    <div className="mt-2.5 space-y-2.5">
+      {cards.map((rawCard) => {
+        const card = mergeRoomDetail(rawCard, rawCard.roomId ? roomDetails[rawCard.roomId] : null);
+        const isCrawl = card.type === 'crawl';
+
+        return (
+          <a
+            key={card.key}
+            href={card.href || undefined}
+            target={isCrawl ? '_blank' : undefined}
+            rel={isCrawl ? 'noreferrer' : undefined}
+            className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-200 hover:shadow-md"
+          >
+            <div className="flex gap-2.5 p-2.5">
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                {card.image ? (
+                  <img src={card.image} alt={card.title} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-slate-300">
+                    <ImageIcon size={24} />
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${isCrawl ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                    <Home size={11} />
+                    {card.badge}
+                  </span>
+                  {card.source && <span className="truncate text-[10px] text-slate-400">{card.source}</span>}
+                </div>
+
+                <h4 className="line-clamp-2 text-[13px] font-semibold leading-snug text-slate-900">
+                  {card.title}
+                </h4>
+
+                <div className="mt-1.5 space-y-1 text-[11px] text-slate-600">
+                  {card.price && (
+                    <div className="flex items-center gap-1 font-semibold text-blue-600">
+                      <DollarSign size={12} />
+                      <span className="truncate">{card.price}</span>
+                    </div>
+                  )}
+                  {card.area && (
+                    <div className="flex items-center gap-1">
+                      <Ruler size={12} />
+                      <span className="truncate">{card.area}</span>
+                    </div>
+                  )}
+                  {card.address && (
+                    <div className="flex items-start gap-1">
+                      <MapPin size={12} className="mt-0.5 shrink-0" />
+                      <span className="line-clamp-2">{card.address}</span>
+                    </div>
+                  )}
+                  {card.phone && (
+                    <div className="flex items-center gap-1 font-medium text-slate-700">
+                      <Phone size={12} />
+                      <span className="truncate">{card.phone}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-600">
+              <span>{isCrawl ? 'Mở nguồn tin' : 'Xem chi tiết phòng'}</span>
+              <ExternalLink size={12} />
+            </div>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ChatWidget() {
   const { user } = useAuth();
   
@@ -305,15 +460,43 @@ export default function ChatWidget() {
       const nextContext = toContext(event.detail);
       if (!nextContext) return;
 
+      const openAdminContext = async (sourceContext) => {
+        try {
+          const admin = await fetchSupportAdmin();
+          const roomRef = sourceContext.roomId ? ` (/room/${sourceContext.roomId})` : '';
+          const adminContext = toContext({
+            roomId: null,
+            receiverId: admin.id,
+            receiverName: 'Hỗ trợ trực tuyến (Admin)',
+            roomTitle: sourceContext.roomId ? `Hỗ trợ phòng #${sourceContext.roomId}` : 'Hỗ trợ trực tuyến',
+            initialMessage:
+              sourceContext.initialMessage ||
+              `Tôi cần hỗ trợ về phòng không dùng hệ thống: ${sourceContext.roomTitle}${roomRef}`,
+          });
+          setContext(adminContext);
+          storeContext(adminContext);
+          setDraft(adminContext.initialMessage || '');
+          setViewMode('chat');
+          setOpen(true);
+          setError('');
+        } catch (err) {
+          console.error('Không thể lấy thông tin admin:', err);
+          setError('Không tìm thấy Quản trị viên để hỗ trợ tin này.');
+          setOpen(true);
+          setViewMode('list');
+        }
+      };
+
+      if (nextContext.routeToAdmin) {
+        await openAdminContext(nextContext);
+        return;
+      }
+
       if (nextContext.roomId) {
         try {
           const contact = await fetchRoomContact(nextContext.roomId);
           if (contact.isCrawled) {
-            setError('Tin từ nguồn crawl — vui lòng liên hệ qua số điện thoại trên trang chi tiết phòng.');
-            setOpen(true);
-            setViewMode('list');
-            storeContext(null);
-            setContext(null);
+            await openAdminContext(nextContext);
             return;
           }
         } catch {
@@ -323,6 +506,7 @@ export default function ChatWidget() {
 
       setContext(nextContext);
       storeContext(nextContext);
+      setDraft(nextContext.initialMessage || '');
       setViewMode('chat');
       setOpen(true);
       setError('');
@@ -701,6 +885,8 @@ export default function ChatWidget() {
                     const mine = Number(item.sender_id) === Number(user?.id);
                     const showAvatar = !mine && (index === 0 || Number(sortedMessages[index - 1]?.sender_id) !== Number(item.sender_id));
                     const suggestionCards = mine ? [] : extractChatCards(item.content);
+                    const visibleContent = suggestionCards.length ? stripCardLines(item.content) : item.content;
+                    const hasRoomCards = suggestionCards.length > 0;
                     
                     return (
                       <div key={item.id} className={`flex w-full ${mine ? 'justify-end' : 'justify-start'}`}>
@@ -714,16 +900,18 @@ export default function ChatWidget() {
                           </div>
                         )}
                         <div
-                          className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-[14px] shadow-sm relative group ${
+                          className={`${hasRoomCards && !mine ? 'max-w-[88%] p-2' : 'max-w-[75%] px-3.5 py-2'} rounded-2xl text-[14px] shadow-sm relative group ${
                             mine
                               ? 'bg-blue-600 text-white rounded-br-sm'
                               : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
                           }`}
                         >
-                          <p className="leading-relaxed whitespace-pre-wrap break-words">
-                            {renderLinkedText(item.content, mine)}
-                          </p>
-                          <ChatSuggestionCards cards={suggestionCards} />
+                          {visibleContent && (
+                            <p className="leading-relaxed whitespace-pre-wrap break-words">
+                              {renderLinkedText(visibleContent, mine)}
+                            </p>
+                          )}
+                          <RichChatSuggestionCards cards={suggestionCards} />
                           <div className={`flex items-center justify-end gap-1 mt-1 ${mine ? 'text-blue-200' : 'text-slate-400'}`}>
                             <span className="text-[10px] select-none">
                               {formatTime(item.sent_at)}

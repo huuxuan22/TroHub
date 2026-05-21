@@ -53,11 +53,31 @@ function sanitizeAddress(address = '') {
   return deduped.join(', ');
 }
 
+function dedupeAddressSegments(address = '') {
+  const parts = String(address)
+    .trim()
+    .replace(/,\s*$/, '')
+    .split(',')
+    .map((part) => part.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+
+  const deduped = [];
+  parts.forEach((part) => {
+    const previous = deduped[deduped.length - 1];
+    if (previous && normalizeAddressSegment(previous) === normalizeAddressSegment(part)) {
+      return;
+    }
+    deduped.push(part);
+  });
+
+  return deduped.join(', ');
+}
+
 /**
  * Hiển thị / lưu một dòng địa chỉ kèm thành phố mà không lặp (vd: địa chỉ đã kết thúc bằng "Đà Nẵng" thì không thêm ", Đà Nẵng").
  */
 export function formatAddressWithCity(address = '', city = '') {
-  const addr = sanitizeAddress(address);
+  const addr = dedupeAddressSegments(address);
   const cty = String(city).trim();
   if (!cty) return addr;
   if (!addr) return cty;
@@ -92,7 +112,7 @@ export function mapRoomFromApi(room) {
     title: room.title,
     price: Number(room.price || 0),
     area: Number(room.area_sqm || 0),
-    address: sanitizeAddress(room.address || ''),
+    address: dedupeAddressSegments(room.address || ''),
     latitude: hasExactLocation ? latRaw : null,
     longitude: hasExactLocation ? lngRaw : null,
     city: inferCityFromAddress(room.address || ''),

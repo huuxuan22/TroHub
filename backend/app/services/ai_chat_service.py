@@ -14,6 +14,7 @@ from sqlalchemy import and_, desc, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import CrawlData, Message, Room, RoomAmenity, RoomStatus, User, UserRole
+from app.services.crawl_listing_service import room_is_crawled_listing, user_is_crawl_system_account
 from app.services.crawl_row_parsing import amenity_display_name, parse_amenity_tokens
 
 _log = logging.getLogger("trohub.ai_chat")
@@ -134,19 +135,28 @@ def _price_to_vnd(raw: str, unit: str | None) -> int | None:
     except (TypeError, ValueError):
         return None
     unit_norm = _normalize_text(unit)
-    if "tr" in unit_norm or "trieu" in unit_norm or number < 1000:
+    if "tr" in unit_norm or "trieu" in unit_norm or "cu" in unit_norm or number < 1000:
         return int(number * 1_000_000)
     return int(number)
 
 
+def _normalize_price_text(value: object) -> str:
+    text = str(value or "").replace("đ", "d").replace("Đ", "D")
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = re.sub(r"(?<=\d)[,.](?=\d)", ".", text)
+    text = re.sub(r"[^0-9a-zA-Z.\-]+", " ", text).lower()
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _extract_price_filters(text: str) -> tuple[int | None, int | None]:
     price_text = re.sub(r"(\d(?:[\.,]\d+)?)\s*[-–—]\s*(\d)", r"\1 den \2", str(text or ""))
-    normalized = _normalize_text(price_text)
+    normalized = _normalize_price_text(price_text)
     min_price: int | None = None
     max_price: int | None = None
 
     range_match = re.search(
-        r"(?:tu\s*)?(\d+(?:[\.,]\d+)?)\s*(?:tr|trieu|m|million)?\s*(?:den|toi|-)\s*(\d+(?:[\.,]\d+)?)\s*(tr|trieu|m|million)?",
+        r"(?:tu\s*)?(\d+(?:\.\d+)?)\s*(?:cu|tr|trieu|m|million)?\s*(?:den|toi|-)\s*(\d+(?:\.\d+)?)\s*(cu|tr|trieu|m|million)?",
         normalized,
     )
     if range_match:
@@ -155,17 +165,32 @@ def _extract_price_filters(text: str) -> tuple[int | None, int | None]:
         if low is not None and high is not None:
             min_price, max_price = min(low, high), max(low, high)
 
-    upper_match = re.search(r"(?:duoi|toi da|max|khong qua|nho hon)\s*(\d+(?:[\.,]\d+)?)\s*(tr|trieu|m|million)?", normalized)
+    upper_match = re.search(r"(?:duoi|toi da|max|khong qua|nho hon)\s*(\d+(?:\.\d+)?)\s*(cu|tr|trieu|m|million)?", normalized)
     if upper_match:
         parsed = _price_to_vnd(upper_match.group(1), upper_match.group(2) or "trieu")
         if parsed is not None:
             max_price = parsed if max_price is None else min(max_price, parsed)
 
-    lower_match = re.search(r"(?:tren|tu|toi thieu|min|lon hon)\s*(\d+(?:[\.,]\d+)?)\s*(tr|trieu|m|million)?", normalized)
+    lower_match = re.search(r"(?:tren|tu|toi thieu|min|lon hon)\s*(\d+(?:\.\d+)?)\s*(cu|tr|trieu|m|million)?", normalized)
     if lower_match and "den" not in normalized:
         parsed = _price_to_vnd(lower_match.group(1), lower_match.group(2) or "trieu")
         if parsed is not None:
             min_price = parsed if min_price is None else max(min_price, parsed)
+
+    exact_matches = re.findall(
+        r"(?:gia|muc gia|tam gia)?\s*(\d+(?:\.\d+)?)\s*(cu|tr|trieu|m|million)\b",
+        normalized,
+    )
+    has_range_or_comparison = any(
+        marker in normalized
+        for marker in ("duoi", "toi da", "max", "khong qua", "nho hon", "tren", "toi thieu", "min", "lon hon", " den ")
+    )
+    if exact_matches and not has_range_or_comparison:
+        value, unit = exact_matches[-1]
+        parsed = _price_to_vnd(value, unit)
+        if parsed is not None:
+            min_price = parsed
+            max_price = parsed
 
     return min_price, max_price
 
@@ -182,9 +207,17 @@ _ROOM_SEARCH_HINTS = {
     "gan",
     "gia",
     "trieu",
+    "cu",
+    "duoi",
+    "tren",
     "quan",
     "duong",
     "khu",
+    "ha noi",
+    "da nang",
+    "hcm",
+    "tphcm",
+    "sai gon",
 }
 
 _SEARCH_STOPWORDS = {
@@ -211,6 +244,49 @@ _SEARCH_STOPWORDS = {
     "vnd",
 }
 
+_CITY_ALIASES: dict[str, tuple[str, ...]] = {
+    "Hồ Chí Minh": ("ho chi minh", "tp ho chi minh", "thanh pho ho chi minh", "hcm", "tp hcm", "tphcm", "sai gon", "saigon"),
+    "Đà Nẵng": ("da nang", "tp da nang", "thanh pho da nang"),
+    "Hà Nội": ("ha noi", "tp ha noi", "thanh pho ha noi"),
+}
+
+_KNOWN_AREA_PHRASES = (
+    # TP.HCM
+    "binh thanh",
+    "binh tan",
+    "go vap",
+    "phu nhuan",
+    "tan binh",
+    "tan phu",
+    "thu duc",
+    "nha be",
+    "binh chanh",
+    "hoc mon",
+    "cu chi",
+    "can gio",
+    # Da Nang
+    "hai chau",
+    "thanh khe",
+    "son tra",
+    "ngu hanh son",
+    "cam le",
+    "lien chieu",
+    "hoa vang",
+    # Ha Noi
+    "ba dinh",
+    "hoan kiem",
+    "dong da",
+    "hai ba trung",
+    "cau giay",
+    "thanh xuan",
+    "hoang mai",
+    "nam tu liem",
+    "bac tu liem",
+    "ha dong",
+    "tay ho",
+    "long bien",
+)
+
 
 def _looks_like_room_search(text: str) -> bool:
     normalized = _normalize_text(text)
@@ -230,6 +306,7 @@ def _looks_like_search_followup(text: str) -> bool:
         "cho xem",
         "liet ke",
         "danh sach",
+        "thi sao",
         "ten phong",
         "cai ten phong",
         "gui",
@@ -240,6 +317,61 @@ def _looks_like_search_followup(text: str) -> bool:
     return any(phrase in normalized for phrase in followup_phrases) or len(normalized.split()) <= 4
 
 
+def _looks_like_schedule_request(text: str) -> bool:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return False
+    schedule_phrases = (
+        "dat lich",
+        "lich xem",
+        "hen xem",
+        "xem phong",
+        "di xem",
+        "tham quan",
+        "gap chu phong",
+        "gap chu nha",
+        "hen chu phong",
+        "hen chu nha",
+    )
+    return any(phrase in normalized for phrase in schedule_phrases)
+
+
+def _extract_room_id_from_text(text: str | None) -> int | None:
+    if not text:
+        return None
+    patterns = (
+        r"/room/(\d+)",
+        r"#(\d+)",
+        r"\bphong\s*(?:so\s*)?(\d+)\b",
+        r"\bma\s*phong\s*(\d+)\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, str(text), re.I)
+        if match:
+            try:
+                return int(match.group(1))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _resolve_schedule_room_id(incoming_message: Message, history: list[dict[str, str]]) -> int | None:
+    room_id = _extract_room_id_from_text(incoming_message.content)
+    if room_id:
+        return room_id
+    if incoming_message.room_id:
+        return int(incoming_message.room_id)
+
+    # Chỉ dùng lịch sử gần nếu người dùng vừa nhắc lại đúng một phòng cụ thể.
+    for item in reversed(history[-4:]):
+        if item.get("role") != "user":
+            continue
+        room_id = _extract_room_id_from_text(item.get("content"))
+        if room_id:
+            return room_id
+    return None
+
+
 def _search_tokens(text: str) -> list[str]:
     tokens = []
     for token in _normalize_text(text).split():
@@ -247,6 +379,77 @@ def _search_tokens(text: str) -> list[str]:
             continue
         tokens.append(token)
     return tokens[:12]
+
+
+def _has_normalized_phrase(text: str, phrase: str) -> bool:
+    return f" {phrase} " in f" {_normalize_text(text)} "
+
+
+def _extract_location_filters(text: str) -> tuple[str | None, list[str]]:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return None, []
+
+    city_filter: str | None = None
+    for city, aliases in _CITY_ALIASES.items():
+        if any(_has_normalized_phrase(normalized, alias) for alias in aliases):
+            city_filter = city
+            break
+
+    area_filters: list[str] = []
+    seen: set[str] = set()
+
+    for match in re.finditer(r"\b(?:quan|q)\s*0?(\d{1,2})\b", normalized):
+        area = f"quan {int(match.group(1))}"
+        if area not in seen:
+            seen.add(area)
+            area_filters.append(area)
+
+    for phrase in _KNOWN_AREA_PHRASES:
+        if _has_normalized_phrase(normalized, phrase) and phrase not in seen:
+            seen.add(phrase)
+            area_filters.append(phrase)
+
+    return city_filter, area_filters[:4]
+
+
+def _matches_city_address(address: object, city_filter: str | None) -> bool:
+    if not city_filter:
+        return True
+    aliases = _CITY_ALIASES.get(city_filter, ())
+    return any(_has_normalized_phrase(str(address or ""), alias) for alias in aliases)
+
+
+def _matches_area_text(value: object, area: str) -> bool:
+    normalized = _normalize_text(value)
+    if _has_normalized_phrase(normalized, area):
+        return True
+
+    district_match = re.fullmatch(r"quan (\d{1,2})", area)
+    if district_match:
+        number = district_match.group(1)
+        return _has_normalized_phrase(normalized, f"q {number}") or _has_normalized_phrase(normalized, f"q{number}")
+    return False
+
+
+def _filter_by_location(
+    items: list[Any],
+    *,
+    city_filter: str | None,
+    area_filters: list[str],
+    address_getter,
+    text_getter,
+) -> list[Any]:
+    filtered = [item for item in items if _matches_city_address(address_getter(item), city_filter)]
+    if not area_filters:
+        return filtered
+
+    area_matches = [
+        item
+        for item in filtered
+        if any(_matches_area_text(text_getter(item), area) for area in area_filters)
+    ]
+    return area_matches or filtered
 
 
 def _room_amenities(room: Room) -> list[str]:
@@ -359,6 +562,79 @@ def _fallback_room_search_reply(context: str) -> str | None:
     return "\n".join(lines)
 
 
+def _fallback_provider_error_reply(search_context: str, search_text: str) -> str:
+    if _looks_like_room_search(search_text):
+        fallback = _fallback_room_search_reply(search_context)
+        if fallback:
+            return fallback
+        return (
+            "Mình chưa thấy phòng khớp đúng yêu cầu trong dữ liệu hiện có. "
+            "Bạn thử nới ngân sách, đổi khu vực hoặc nói rõ thêm loại phòng/diện tích để mình lọc lại."
+        )
+
+    return (
+        "Mình đã nhận tin nhắn của bạn. Hiện hệ thống AI chưa gọi được nhà cung cấp, "
+        "nên mình sẽ chuyển nội dung này cho quản trị viên xử lý tiếp."
+    )
+
+
+def _safe_ai_error(exc: Exception) -> str:
+    return re.sub(r"([?&]key=)[^&\s]+", r"\1***", str(exc))
+
+
+def _create_schedule_forward_reply(db: Session, incoming_message: Message, history: list[dict[str, str]]) -> str | None:
+    if not _looks_like_schedule_request(incoming_message.content):
+        return None
+
+    room_id = _resolve_schedule_room_id(incoming_message, history)
+    if not room_id:
+        return (
+            "Bạn muốn đặt lịch xem phòng nào? Hãy gửi mã phòng dạng #123 hoặc link /room/123, "
+            "kèm ngày giờ muốn xem để mình chuyển yêu cầu cho chủ phòng."
+        )
+
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if room is None:
+        return f"Mình chưa tìm thấy phòng #{room_id}. Bạn kiểm tra lại mã phòng hoặc gửi link /room/{room_id} giúp mình."
+
+    if room.status != RoomStatus.AVAILABLE:
+        return f"Phòng #{room_id} hiện không ở trạng thái đang hiển thị, nên mình chưa thể gửi yêu cầu đặt lịch."
+
+    if room_is_crawled_listing(room, db):
+        return (
+            f"Phòng #{room_id} là tin từ nguồn crawl, TroHub chưa có chủ phòng trên hệ thống để xác nhận lịch tự động. "
+            "Bạn hãy dùng số điện thoại nguồn trên trang chi tiết hoặc gửi admin kiểm tra thêm."
+        )
+
+    landlord = db.query(User).filter(User.id == room.landlord_id).first()
+    if landlord is None or user_is_crawl_system_account(landlord):
+        return f"Mình chưa xác định được chủ phòng thật cho phòng #{room_id}, nên chưa thể chuyển yêu cầu đặt lịch."
+
+    sender = db.query(User).filter(User.id == incoming_message.sender_id).first()
+    sender_name = sender.full_name if sender else f"User #{incoming_message.sender_id}"
+    forwarded_content = (
+        f"Khách {sender_name} muốn đặt lịch xem phòng #{room.id} - {room.title}.\n"
+        f"Nội dung khách gửi: {incoming_message.content.strip()}\n"
+        "Vui lòng phản hồi trong TroHub để xác nhận ngày giờ xem phòng."
+    )
+
+    db.add(
+        Message(
+            sender_id=incoming_message.sender_id,
+            receiver_id=landlord.id,
+            room_id=room.id,
+            content=forwarded_content[:4000],
+            is_read=False,
+        )
+    )
+    db.flush()
+
+    return (
+        f"Mình đã gửi yêu cầu đặt lịch xem phòng #{room.id} cho chủ phòng trên TroHub. "
+        "Lịch xem chỉ được xác nhận khi chủ phòng phản hồi lại trong chat, bạn đừng chuyển cọc trước khi xem phòng thực tế."
+    )
+
+
 def _search_text_from_history(incoming_message: Message, history: list[dict[str, str]]) -> str:
     current = incoming_message.content or ""
     if _looks_like_search_followup(current):
@@ -384,6 +660,7 @@ def _available_room_search_context(db: Session, user_text: str, limit: int) -> s
         )
 
     min_price, max_price = _extract_price_filters(user_text)
+    city_filter, area_filters = _extract_location_filters(user_text)
     query = (
         db.query(Room)
         .options(
@@ -392,6 +669,8 @@ def _available_room_search_context(db: Session, user_text: str, limit: int) -> s
         )
         .filter(Room.status == RoomStatus.AVAILABLE)
     )
+    if min_price is not None or max_price is not None:
+        query = query.filter(Room.price > 0)
     if min_price is not None:
         query = query.filter(Room.price >= min_price)
     if max_price is not None:
@@ -399,10 +678,19 @@ def _available_room_search_context(db: Session, user_text: str, limit: int) -> s
 
     tokens = _search_tokens(user_text)
     candidates = query.order_by(desc(Room.created_at), desc(Room.id)).limit(80).all()
+    candidates = _filter_by_location(
+        candidates,
+        city_filter=city_filter,
+        area_filters=area_filters,
+        address_getter=lambda room: room.address,
+        text_getter=lambda room: " ".join(str(part or "") for part in (room.title, room.address, room.description)),
+    )
     ranked = sorted(candidates, key=lambda room: (_score_room_for_message(room, tokens), room.created_at, room.id), reverse=True)
     matches = [room for room in ranked if _score_room_for_message(room, tokens) > 0] or ranked
 
     crawl_query = db.query(CrawlData)
+    if min_price is not None or max_price is not None:
+        crawl_query = crawl_query.filter(CrawlData.price > 0)
     if min_price is not None:
         crawl_query = crawl_query.filter(CrawlData.price >= min_price)
     if max_price is not None:
@@ -410,6 +698,13 @@ def _available_room_search_context(db: Session, user_text: str, limit: int) -> s
 
     normalized_urls = {room.source_url for room in matches if room.source_url}
     crawl_candidates = crawl_query.limit(120).all()
+    crawl_candidates = _filter_by_location(
+        crawl_candidates,
+        city_filter=city_filter,
+        area_filters=area_filters,
+        address_getter=lambda row: row.address,
+        text_getter=lambda row: " ".join(str(part or "") for part in (row.title, row.address, row.description)),
+    )
     crawl_ranked = sorted(crawl_candidates, key=lambda row: _score_crawl_row_for_message(row, tokens), reverse=True)
     crawl_matches = [
         row
@@ -422,6 +717,10 @@ def _available_room_search_context(db: Session, user_text: str, limit: int) -> s
     selected_crawl_rows = crawl_matches[:remaining]
 
     filter_lines = []
+    if city_filter:
+        filter_lines.append(f"thành phố {city_filter}")
+    if area_filters:
+        filter_lines.append(f"khu vực {', '.join(area_filters)}")
     if min_price is not None:
         filter_lines.append(f"giá từ {_format_money(min_price)}")
     if max_price is not None:
@@ -548,8 +847,9 @@ def _build_chat_messages(
         "Nếu ngữ cảnh có danh sách phòng/tin gợi ý, bắt buộc liệt kê từng phòng/tin cụ thể, gồm mã # hoặc nhãn tin crawl, tên, giá và địa chỉ; "
         "với phòng trong bảng rooms phải giữ nguyên link /room/<id>, với tin crawl phải giữ nguyên link nguồn nếu có. "
         "không được chỉ nói chung chung rằng có một số phòng. "
-        "TroHub chưa có thao tác đặt cọc/giữ chỗ tự động trong chat; với nhu cầu đặt phòng, hãy hướng dẫn khách mở chi tiết phòng "
-        "và liên hệ chủ phòng hoặc admin để xác nhận lịch xem phòng. "
+        "TroHub chưa có thao tác đặt cọc/giữ chỗ tự động trong chat. Với nhu cầu đặt lịch xem phòng hệ thống, hãy yêu cầu khách gửi mã phòng #id hoặc link /room/id, "
+        "ngày giờ muốn xem và số điện thoại nếu khách muốn chủ phòng gọi lại; chỉ nói lịch được xác nhận sau khi chủ phòng phản hồi. "
+        "Với tin crawl, không tự đặt lịch; hướng dẫn khách dùng SĐT nguồn hoặc nhờ admin kiểm tra. "
         "Nếu câu hỏi cần kiểm tra tài khoản, thanh toán, tranh chấp, dữ liệu cá nhân hoặc quyết định của admin, "
         "hãy nói rằng bạn đã ghi nhận và sẽ chuyển quản trị viên xử lý."
     )
@@ -692,6 +992,9 @@ def generate_ai_reply(db: Session, incoming_message: Message, config: AIChatConf
     history = _thread_history(db, incoming_message, config.max_history_messages)
     search_text = _search_text_from_history(incoming_message, history)
     search_context = _available_room_search_context(db, search_text, config.max_suggested_rooms)
+    schedule_reply = _create_schedule_forward_reply(db=db, incoming_message=incoming_message, history=history)
+    if schedule_reply:
+        return schedule_reply[:4000]
 
     try:
         if config.provider == "gemini":
@@ -699,8 +1002,8 @@ def generate_ai_reply(db: Session, incoming_message: Message, config: AIChatConf
         else:
             content = _call_openai(config, messages)
     except Exception as exc:
-        _log.warning("AI chat reply failed (%s): %s", config.provider, exc)
-        return None
+        _log.warning("AI chat reply failed (%s): %s", config.provider, _safe_ai_error(exc))
+        return _fallback_provider_error_reply(search_context, search_text)[:4000]
 
     reply = str(content or "").strip()
     if _looks_like_room_search(search_text) and not _reply_has_concrete_suggestions(reply):

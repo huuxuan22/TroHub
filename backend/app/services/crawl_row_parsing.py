@@ -39,7 +39,19 @@ def parse_images_field_to_list(raw: Any) -> list[str]:
             candidates = [x.strip() for x in s.split("|") if x.strip()]
         else:
             candidates = [s]
-    return [ensure_https_photo_url(u) for u in candidates if u]
+    seen: set[str] = set()
+    urls: list[str] = []
+    for candidate in candidates:
+        url = ensure_https_photo_url(candidate)
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+
+    large_gallery_images = [url for url in urls if "900x600" in url]
+    if large_gallery_images:
+        return large_gallery_images[:15]
+    return urls[:8]
 
 
 def parse_amenity_tokens(raw: str | None) -> list[str]:
