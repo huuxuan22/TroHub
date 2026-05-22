@@ -9,6 +9,18 @@ import { recordSearchHistory } from '../services/searchHistoryApi';
 import { useAuth } from '../contexts/AuthContext';
 import { persistUserLocationIfAuthenticated } from '../utils/persistUserLocation';
 import useGeolocation, { formatDistanceKm, haversineDistanceKm } from '../utils/useGeolocation';
+import {
+  clearActiveCrawlHotRoomsWatch,
+  clearCrawlHotRoomsTimers,
+  clearNewCrawledHotRooms,
+  collectNewCrawledHotRooms,
+  hasCrawlHotRoomsSearchSignal,
+  mergeNewCrawledHotRooms,
+  readActiveCrawlHotRoomsWatch,
+  readNewCrawledHotRooms,
+  scheduleCrawlHotRoomsRefresh,
+  startCrawlHotRoomsWatch,
+} from '../utils/crawlHotRooms';
 
 const PRICE_RANGES = [
   { min: 0, max: 1000000 },
@@ -33,8 +45,8 @@ export default function SearchPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const resultsTopRef = useRef(null);
   const crawlRefreshTimersRef = useRef([]);
+  const crawlWatchRef = useRef(readActiveCrawlHotRoomsWatch());
   const lastRecordedSearchKeyRef = useRef('');
-  const lastNearMeCrawlKeyRef = useRef('');
   const [filters, setFilters] = useState({
     type: '',
     city: '',
@@ -64,23 +76,34 @@ export default function SearchPage() {
   const disableNearMe = () => {
     setNearMe(null);
     setLocationError('');
-    lastNearMeCrawlKeyRef.current = '';
+    if (crawlWatchRef.current?.nearMe) {
+      clearActiveCrawlHotRoomsWatch();
+      crawlWatchRef.current = null;
+    }
     clearCrawlRefreshTimers();
   };
 
   const clearCrawlRefreshTimers = () => {
-    crawlRefreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
-    crawlRefreshTimersRef.current = [];
+    clearCrawlHotRoomsTimers(crawlRefreshTimersRef);
   };
 
-  const scheduleCrawlResultRefresh = () => {
-    clearCrawlRefreshTimers();
-    crawlRefreshTimersRef.current = [25000, 60000, 100000].map((delay) =>
-      window.setTimeout(() => setRefreshNonce((value) => value + 1), delay),
+  const scheduleCrawlResultRefresh = (watch = crawlWatchRef.current) => {
+    scheduleCrawlHotRoomsRefresh(
+      crawlRefreshTimersRef,
+      () => setRefreshNonce((value) => value + 1),
+      watch,
     );
   };
 
-  useEffect(() => clearCrawlRefreshTimers, []);
+  useEffect(() => {
+    const watch = readActiveCrawlHotRoomsWatch();
+    crawlWatchRef.current = watch;
+    if (watch) {
+      setRefreshNonce((value) => value + 1);
+      scheduleCrawlResultRefresh(watch);
+    }
+    return clearCrawlRefreshTimers;
+  }, []);
 
   // Tính khoảng cách & sắp theo gần nhất khi có toạ độ user.
   const orderedRooms = useMemo(() => {
@@ -121,8 +144,7 @@ export default function SearchPage() {
           price_desc: { sort_by: 'price', sort_order: 'desc' },
         };
         const sortParams = sortByMap[filters.sortBy] || sortByMap.newest;
-
-        const { rooms: fetched, total } = await fetchRooms({
+        const roomRequestParams = {
           keyword,
           min_price: range?.min,
           max_price: range?.max,
@@ -133,45 +155,86 @@ export default function SearchPage() {
           ...sortParams,
           skip: nearMe ? 0 : (page - 1) * PAGE_SIZE,
           limit: nearMe ? 100 : PAGE_SIZE,
-        });
-        setRooms(fetched);
-        setTotalServer(total ?? fetched.length);
-
+        };
+        const historyFilters = {
+          type: filters.type || undefined,
+          priceRange: filters.priceRange,
+          minArea: filters.minArea || undefined,
+          maxArea: filters.maxArea || undefined,
+          sortBy: filters.sortBy,
+          min_price: range?.min,
+          max_price: range?.max,
+          min_area: Number.isFinite(minArea) ? minArea : undefined,
+          max_area: Number.isFinite(maxArea) ? maxArea : undefined,
+          near_me: Boolean(nearMe),
+          latitude: nearMe?.latitude,
+          longitude: nearMe?.longitude,
+          accuracy: nearMe?.accuracy,
+          query: query || undefined,
+        };
         const historyPayload = {
-            keyword: query || undefined,
-            city: city || filters.city || undefined,
-            filters: {
-              type: filters.type || undefined,
-              priceRange: filters.priceRange,
-              minArea: filters.minArea || undefined,
-              maxArea: filters.maxArea || undefined,
-              sortBy: filters.sortBy,
-              min_price: range?.min,
-              max_price: range?.max,
-              min_area: Number.isFinite(minArea) ? minArea : undefined,
-              max_area: Number.isFinite(maxArea) ? maxArea : undefined,
-              near_me: Boolean(nearMe),
-              latitude: nearMe?.latitude,
-              longitude: nearMe?.longitude,
-              accuracy: nearMe?.accuracy,
-              query: query || undefined,
-            },
-            result_count: total ?? fetched.length,
-          };
+          keyword: query || undefined,
+          city: city || filters.city || undefined,
+          filters: historyFilters,
+        };
         const historyKey = JSON.stringify({
           keyword: historyPayload.keyword || null,
           city: historyPayload.city || null,
           filters: historyPayload.filters,
         });
 
-        if (page === 1 && historyKey !== lastRecordedSearchKeyRef.current) {
+        const shouldRecordSearch = page === 1 && historyKey !== lastRecordedSearchKeyRef.current;
+        if (shouldRecordSearch) {
           lastRecordedSearchKeyRef.current = historyKey;
-          recordSearchHistory(historyPayload);
+          if (hasCrawlHotRoomsSearchSignal(historyPayload)) {
+            clearNewCrawledHotRooms();
+            const watch = startCrawlHotRoomsWatch({
+              source: 'search_page',
+              keyword,
+              locationQuery: keyword,
+              city: historyPayload.city,
+              filters: historyFilters,
+              nearMe: Boolean(nearMe),
+              latitude: nearMe?.latitude,
+              longitude: nearMe?.longitude,
+              accuracy: nearMe?.accuracy,
+            });
+            crawlWatchRef.current = watch;
+            scheduleCrawlResultRefresh(watch);
+          }
         }
 
-        if (page === 1 && nearMe && historyKey !== lastNearMeCrawlKeyRef.current) {
-          lastNearMeCrawlKeyRef.current = historyKey;
-          scheduleCrawlResultRefresh();
+        const { rooms: fetched, total } = await fetchRooms(roomRequestParams);
+        setRooms(fetched);
+        setTotalServer(total ?? fetched.length);
+
+        if (shouldRecordSearch) {
+          recordSearchHistory({
+            ...historyPayload,
+            result_count: total ?? fetched.length,
+          });
+        }
+
+        const activeWatch = readActiveCrawlHotRoomsWatch();
+        crawlWatchRef.current = activeWatch;
+        if (activeWatch) {
+          let scanRooms = fetched;
+          if (!nearMe) {
+            try {
+              const { rooms: latestRooms } = await fetchRooms({
+                ...roomRequestParams,
+                skip: 0,
+                limit: 80,
+              });
+              scanRooms = latestRooms;
+            } catch {
+              scanRooms = fetched;
+            }
+          }
+          const newCrawled = collectNewCrawledHotRooms(scanRooms, activeWatch);
+          if (newCrawled.length > 0) {
+            mergeNewCrawledHotRooms(readNewCrawledHotRooms(), newCrawled, activeWatch);
+          }
         }
       } catch (err) {
         setError('Không thể tải dữ liệu từ server. Vui lòng thử lại.');

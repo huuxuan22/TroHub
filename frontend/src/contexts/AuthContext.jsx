@@ -23,7 +23,13 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let active = true;
     fetchMe()
-      .then((me) => { if (active) setUser(me); })
+      .then((me) => {
+        if (!active) return;
+        setUser(me);
+        if (shouldShowHotDealsModal(me)) {
+          setPendingHotDealsModal(true);
+        }
+      })
       .finally(() => { if (active) setAuthLoading(false); });
     return () => { active = false; };
   }, []);

@@ -9,6 +9,17 @@ import { persistUserLocationIfAuthenticated } from '../../utils/persistUserLocat
 import { isAdminUser } from '../../utils/userRoles';
 import { recordSearchHistory } from '../../services/searchHistoryApi';
 import { roomMatchesLocationQuery } from '../../utils/searchText';
+import {
+  clearActiveCrawlHotRoomsWatch,
+  clearCrawlHotRoomsTimers,
+  clearNewCrawledHotRooms,
+  collectNewCrawledHotRooms,
+  mergeNewCrawledHotRooms,
+  readActiveCrawlHotRoomsWatch,
+  readNewCrawledHotRooms,
+  scheduleCrawlHotRoomsRefresh,
+  startCrawlHotRoomsWatch,
+} from '../../utils/crawlHotRooms';
 
 const BUDGET_MAX = 50_000_000;
 const BUDGET_STEP = 500_000;
@@ -59,20 +70,14 @@ export default function HomeMapExplorer() {
   const [userLocation, setUserLocation] = useState(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [locationError, setLocationError] = useState('');
-  const [newCrawledRooms, setNewCrawledRooms] = useState(() => {
-    try {
-      const stored = localStorage.getItem('trohub_new_crawled_rooms');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-  const searchStartTimeRef = useRef(null);
+  const [newCrawledRooms, setNewCrawledRooms] = useState(readNewCrawledHotRooms);
+  const crawlWatchRef = useRef(readActiveCrawlHotRoomsWatch());
 
   const resetNewCrawledRooms = () => {
     setNewCrawledRooms([]);
-    localStorage.removeItem('trohub_new_crawled_rooms');
-    localStorage.removeItem('trohub_show_hot_deals_new_rooms');
+    clearNewCrawledHotRooms();
+    clearActiveCrawlHotRoomsWatch();
+    crawlWatchRef.current = null;
   };
 
   const { requestLocation, loading: locating } = useGeolocation();
@@ -81,18 +86,26 @@ export default function HomeMapExplorer() {
   const lastNearMeCrawlKeyRef = useRef('');
 
   const clearCrawlRefreshTimers = () => {
-    crawlRefreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
-    crawlRefreshTimersRef.current = [];
+    clearCrawlHotRoomsTimers(crawlRefreshTimersRef);
   };
 
-  const scheduleCrawlResultRefresh = () => {
-    clearCrawlRefreshTimers();
-    crawlRefreshTimersRef.current = [25000, 60000, 100000].map((delay) =>
-      window.setTimeout(() => setRefreshNonce((value) => value + 1), delay),
+  const scheduleCrawlResultRefresh = (watch = crawlWatchRef.current) => {
+    scheduleCrawlHotRoomsRefresh(
+      crawlRefreshTimersRef,
+      () => setRefreshNonce((value) => value + 1),
+      watch,
     );
   };
 
-  useEffect(() => clearCrawlRefreshTimers, []);
+  useEffect(() => {
+    const watch = readActiveCrawlHotRoomsWatch();
+    crawlWatchRef.current = watch;
+    if (watch) {
+      setRefreshNonce((value) => value + 1);
+      scheduleCrawlResultRefresh(watch);
+    }
+    return clearCrawlRefreshTimers;
+  }, []);
 
   useEffect(() => {
     if (!selectedId || !listScrollRef.current) return;
@@ -112,61 +125,11 @@ export default function HomeMapExplorer() {
           limit: 80,
         });
         if (!cancelled) {
-          if (searchStartTimeRef.current) {
-            // Find newly crawled rooms
-            const newCrawled = data.filter((room) => {
-              if (room.source !== 'crawl') return false;
-              // Check if created after search start time (with 10s clock drift buffer)
-              const roomTime = new Date(room.postedAt);
-              if (roomTime < new Date(searchStartTimeRef.current.getTime() - 10000)) return false;
-              
-              // Verify room is relevant to user's search or location
-              if (userLocation) {
-                const dist = haversineDistanceKm(
-                  userLocation.latitude,
-                  userLocation.longitude,
-                  room.latitude,
-                  room.longitude
-                );
-                if (dist <= 10) return true;
-              }
-              const q = locationQuery.trim();
-              if (q && roomMatchesLocationQuery(room, q)) {
-                return true;
-              }
-              return false;
-            });
-
-            if (newCrawled.length > 0) {
-              setNewCrawledRooms((prev) => {
-                const existingIds = new Set(prev.map((r) => r.id));
-                const merged = [...prev];
-                newCrawled.forEach((r) => {
-                  if (!existingIds.has(r.id)) {
-                    // Add badge info based on how it was found
-                    if (userLocation) {
-                      const dist = haversineDistanceKm(
-                        userLocation.latitude,
-                        userLocation.longitude,
-                        r.latitude,
-                        r.longitude
-                      );
-                      if (dist <= 10) {
-                        r.customBadge = { type: 'near_me', label: '📍 GẦN BẠN' };
-                      } else {
-                        r.customBadge = { type: 'new_crawl', label: '✨ MỚI CÀO' };
-                      }
-                    } else {
-                      r.customBadge = { type: 'new_crawl', label: '✨ MỚI CÀO' };
-                    }
-                    merged.push(r);
-                  }
-                });
-                localStorage.setItem('trohub_new_crawled_rooms', JSON.stringify(merged));
-                localStorage.setItem('trohub_show_hot_deals_new_rooms', 'true');
-                return merged;
-              });
-            }
+          const activeWatch = readActiveCrawlHotRoomsWatch();
+          crawlWatchRef.current = activeWatch;
+          const newCrawled = collectNewCrawledHotRooms(data, activeWatch);
+          if (newCrawled.length > 0) {
+            setNewCrawledRooms((prev) => mergeNewCrawledHotRooms(prev, newCrawled, activeWatch));
           }
           setRooms(data);
         }
@@ -204,8 +167,8 @@ export default function HomeMapExplorer() {
 
   const handleUseMyLocation = async () => {
     setLocationError('');
+    lastNearMeCrawlKeyRef.current = '';
     resetNewCrawledRooms();
-    searchStartTimeRef.current = new Date();
     try {
       const pos = await requestLocation();
       setUserLocation(pos);
@@ -221,6 +184,21 @@ export default function HomeMapExplorer() {
       });
       if (crawlKey !== lastNearMeCrawlKeyRef.current) {
         lastNearMeCrawlKeyRef.current = crawlKey;
+        const watch = startCrawlHotRoomsWatch({
+          source: 'home_map_location',
+          keyword: locationQuery || undefined,
+          locationQuery,
+          filters: {
+            purpose,
+            budget_min: budgetMin,
+            budget_max: budgetMax,
+          },
+          nearMe: true,
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracy: pos.accuracy,
+        });
+        crawlWatchRef.current = watch;
         recordSearchHistory({
           keyword: locationQuery || undefined,
           filters: {
@@ -235,7 +213,7 @@ export default function HomeMapExplorer() {
           },
           result_count: filtered.length,
         });
-        scheduleCrawlResultRefresh();
+        scheduleCrawlResultRefresh(watch);
       }
     } catch (err) {
       setLocationError(err.message || 'Không lấy được vị trí.');
@@ -246,6 +224,10 @@ export default function HomeMapExplorer() {
     setUserLocation(null);
     setLocationError('');
     lastNearMeCrawlKeyRef.current = '';
+    if (crawlWatchRef.current?.nearMe) {
+      clearActiveCrawlHotRoomsWatch();
+      crawlWatchRef.current = null;
+    }
     clearCrawlRefreshTimers();
   };
 
@@ -285,8 +267,23 @@ export default function HomeMapExplorer() {
   const handleLocationApply = ({ query, city, kind }) => {
     if (kind === 'clear') return;
     resetNewCrawledRooms();
-    searchStartTimeRef.current = new Date();
     const q = (query || '').trim();
+    const watch = startCrawlHotRoomsWatch({
+      source: 'home_map_search',
+      keyword: q || undefined,
+      locationQuery: q,
+      city: city || undefined,
+      filters: {
+        purpose,
+        budget_min: budgetMin,
+        budget_max: budgetMax,
+      },
+      nearMe: Boolean(userLocation),
+      latitude: userLocation?.latitude,
+      longitude: userLocation?.longitude,
+      accuracy: userLocation?.accuracy,
+    });
+    crawlWatchRef.current = watch;
     const matchCount = rooms.filter((r) => {
       if (purpose === 'stays' && r.type !== 'Phòng trọ') return false;
       if (purpose === 'business' && r.type === 'Phòng trọ') return false;
@@ -303,9 +300,13 @@ export default function HomeMapExplorer() {
         budget_min: budgetMin,
         budget_max: budgetMax,
         near_me: Boolean(userLocation),
+        latitude: userLocation?.latitude,
+        longitude: userLocation?.longitude,
+        accuracy: userLocation?.accuracy,
       },
       result_count: matchCount,
     });
+    scheduleCrawlResultRefresh(watch);
   };
 
   return (
