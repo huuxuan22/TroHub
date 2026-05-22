@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { isAdminUser } from '../../utils/userRoles';
@@ -20,6 +20,7 @@ export default function FeaturedHotRoomsGate() {
   const [loading, setLoading] = useState(false);
   const [rooms, setRooms] = useState([]);
   const [newRoomsSignal, setNewRoomsSignal] = useState(0);
+  const triedInitialOpenRef = useRef(false);
 
   useEffect(() => {
     const handleNewRooms = () => setNewRoomsSignal((value) => value + 1);
@@ -33,29 +34,31 @@ export default function FeaturedHotRoomsGate() {
     const showNewRooms = localStorage.getItem(SHOW_HOT_DEALS_NEW_ROOMS_STORAGE_KEY) === 'true';
     const activeWatch = readActiveCrawlHotRoomsWatch();
     const shouldScanReloadedCrawl = Boolean(activeWatch && !showNewRooms);
-    const shouldRun = pendingHotDealsModal || showNewRooms || shouldScanReloadedCrawl;
+    const shouldTryInitialOpen = Boolean(user) && !triedInitialOpenRef.current;
+    const shouldRun = shouldTryInitialOpen || pendingHotDealsModal || showNewRooms || shouldScanReloadedCrawl;
 
     if (!shouldRun) return;
     if (user && isAdminUser(user)) {
+      triedInitialOpenRef.current = true;
       dismissHotDealsModal();
       localStorage.removeItem(SHOW_HOT_DEALS_NEW_ROOMS_STORAGE_KEY);
       return;
     }
 
     let active = true;
-    setOpen(Boolean(pendingHotDealsModal || showNewRooms));
+    triedInitialOpenRef.current = true;
+    setOpen(Boolean(pendingHotDealsModal || showNewRooms || shouldTryInitialOpen));
     setLoading(true);
     setRooms([]);
 
-    let newCrawled = readNewCrawledHotRooms();
-    const latestRoomsPromise = shouldScanReloadedCrawl
-      ? fetchRooms({
-          status: 'available',
-          sort_by: 'created_at',
-          sort_order: 'desc',
-          limit: 80,
-        }).then(({ rooms: latestRooms }) => latestRooms)
-      : Promise.resolve([]);
+    const storedCrawled = readNewCrawledHotRooms();
+    let newCrawled = showNewRooms ? storedCrawled : [];
+    const latestRoomsPromise = fetchRooms({
+      status: 'available',
+      sort_by: 'created_at',
+      sort_order: 'desc',
+      limit: 80,
+    }).then(({ rooms: latestRooms }) => latestRooms);
 
     Promise.all([fetchFeaturedHotRooms(10), latestRoomsPromise.catch(() => [])])
       .then(([list, latestRooms]) => {
@@ -64,16 +67,15 @@ export default function FeaturedHotRoomsGate() {
         if (activeWatch && latestRooms.length > 0) {
           const detected = collectNewCrawledHotRooms(latestRooms, activeWatch);
           if (detected.length > 0) {
-            newCrawled = mergeNewCrawledHotRooms(newCrawled, detected, activeWatch);
+            newCrawled = mergeNewCrawledHotRooms([], detected, activeWatch);
           }
         }
 
-        if (shouldScanReloadedCrawl && !pendingHotDealsModal && newCrawled.length === 0) {
-          setOpen(false);
-          return;
+        if (newCrawled.length === 0 && storedCrawled.length > 0) {
+          newCrawled = storedCrawled;
         }
 
-        const displayRooms = newCrawled.length > 0 ? newCrawled : list;
+        const displayRooms = newCrawled.length > 0 ? newCrawled : (list.length > 0 ? list : latestRooms.slice(0, 10));
 
         if (!displayRooms.length) {
           setOpen(false);
