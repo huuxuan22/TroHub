@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Sparkles, Zap, Timer } from 'lucide-react';
 import HotDealRoomCard from './HotDealRoomCard';
@@ -24,6 +24,7 @@ export default function HotDealsLoginModal({ open, rooms, loading, userName, onC
   const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const [countdown, setCountdown] = useState(15 * 60);
+  const scrollAreaRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -40,10 +41,70 @@ export default function HotDealsLoginModal({ open, rooms, loading, userName, onC
     return () => clearInterval(id);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const body = document.body;
+    const html = document.documentElement;
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyLeft = body.style.left;
+    const previousBodyRight = body.style.right;
+    const previousBodyWidth = body.style.width;
+    const previousHtmlOverflow = html.style.overflow;
+
+    // Lock background scroll but keep modal scroll usable (mobile + desktop).
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    html.style.overflow = 'hidden';
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.left = previousBodyLeft;
+      body.style.right = previousBodyRight;
+      body.style.width = previousBodyWidth;
+      html.style.overflow = previousHtmlOverflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const mins = String(Math.floor(countdown / 60)).padStart(2, '0');
   const secs = String(countdown % 60).padStart(2, '0');
+  const roomCount = rooms.length;
+  const titleCount = loading && roomCount === 0 ? 'Phòng' : `${roomCount} phòng`;
+
+  const handleWheelCapture = (event) => {
+    const el = scrollAreaRef.current;
+    if (!el) return;
+
+    const canScroll = el.scrollHeight > el.clientHeight;
+    if (!canScroll) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    const atTop = el.scrollTop <= 0;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    const scrollingUp = event.deltaY < 0;
+    const scrollingDown = event.deltaY > 0;
+
+    // Prevent wheel chaining so scroll stays inside modal area.
+    if ((scrollingUp && atTop) || (scrollingDown && atBottom)) {
+      event.preventDefault();
+    }
+    event.stopPropagation();
+  };
 
   return (
     <div
@@ -78,7 +139,7 @@ export default function HotDealsLoginModal({ open, rooms, loading, userName, onC
                 Ưu đãi nổi bật TroHub
               </p>
               <h2 id="hot-deals-title" className="text-2xl sm:text-3xl font-black leading-tight drop-shadow-sm">
-                {userName ? `${userName}, ` : ''}10 phòng HOT vừa mở!
+                {userName ? `${userName}, ` : ''}{titleCount} HOT vừa mở!
               </h2>
               <p className="text-sm text-blue-50/95 max-w-lg">
                 Giá tốt · Vị trí đẹp · Tiện ích đầy đủ — Khám phá ngay trước khi hết chỗ
@@ -90,7 +151,7 @@ export default function HotDealsLoginModal({ open, rooms, loading, userName, onC
                 </span>
                 <span className="inline-flex items-center gap-1 text-xs font-semibold bg-white/15 px-3 py-1.5 rounded-lg text-blue-50">
                   <Sparkles size={14} />
-                  {rooms.length} phòng nổi bật
+                  {roomCount} phòng nổi bật
                 </span>
               </div>
             </div>
@@ -106,7 +167,11 @@ export default function HotDealsLoginModal({ open, rooms, loading, userName, onC
         </header>
 
         <div className="flex-1 overflow-hidden bg-slate-50 min-h-0">
-          <div className="h-full overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-5">
+          <div
+            ref={scrollAreaRef}
+            className="h-full overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-6 py-5"
+            onWheelCapture={handleWheelCapture}
+          >
             {loading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                 {[...Array(5)].map((_, i) => (

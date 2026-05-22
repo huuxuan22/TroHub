@@ -160,7 +160,7 @@ def _crawler_url() -> str:
 
 
 def _run_search_crawl_payload(history_id: int, payload: dict[str, Any]) -> None:
-    timeout = _env_int("SEARCH_CRAWL_TIMEOUT_SECONDS", 120, min_value=5, max_value=900)
+    timeout = _env_int("SEARCH_CRAWL_TIMEOUT_SECONDS", 180, min_value=5, max_value=900)
     url = _crawler_url()
     try:
         with httpx.Client(timeout=timeout) as client:

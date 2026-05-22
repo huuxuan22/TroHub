@@ -2,8 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { isAdminUser } from '../../utils/userRoles';
-import { fetchFeaturedHotRooms } from '../../services/roomApi';
+import { fetchFeaturedHotRooms, fetchRooms } from '../../services/roomApi';
 import HotDealsLoginModal from './HotDealsLoginModal';
+import {
+  NEW_CRAWLED_HOT_ROOMS_EVENT,
+  SHOW_HOT_DEALS_NEW_ROOMS_STORAGE_KEY,
+  collectNewCrawledHotRooms,
+  mergeNewCrawledHotRooms,
+  readActiveCrawlHotRoomsWatch,
+  readNewCrawledHotRooms,
+} from '../../utils/crawlHotRooms';
 
 export default function FeaturedHotRoomsGate() {
   const navigate = useNavigate();
@@ -11,59 +19,76 @@ export default function FeaturedHotRoomsGate() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rooms, setRooms] = useState([]);
+  const [newRoomsSignal, setNewRoomsSignal] = useState(0);
+
+  useEffect(() => {
+    const handleNewRooms = () => setNewRoomsSignal((value) => value + 1);
+    window.addEventListener(NEW_CRAWLED_HOT_ROOMS_EVENT, handleNewRooms);
+    return () => window.removeEventListener(NEW_CRAWLED_HOT_ROOMS_EVENT, handleNewRooms);
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
 
-    // Check if we should trigger due to new crawled rooms on reload
-    const showNewRooms = localStorage.getItem('trohub_show_hot_deals_new_rooms') === 'true';
-    const shouldOpen = pendingHotDealsModal || showNewRooms;
+    const showNewRooms = localStorage.getItem(SHOW_HOT_DEALS_NEW_ROOMS_STORAGE_KEY) === 'true';
+    const activeWatch = readActiveCrawlHotRoomsWatch();
+    const shouldScanReloadedCrawl = Boolean(activeWatch && !showNewRooms);
+    const shouldRun = pendingHotDealsModal || showNewRooms || shouldScanReloadedCrawl;
 
-    if (!shouldOpen) return;
+    if (!shouldRun) return;
     if (user && isAdminUser(user)) {
       dismissHotDealsModal();
-      localStorage.removeItem('trohub_show_hot_deals_new_rooms');
+      localStorage.removeItem(SHOW_HOT_DEALS_NEW_ROOMS_STORAGE_KEY);
       return;
     }
 
     let active = true;
-    setOpen(true);
+    setOpen(Boolean(pendingHotDealsModal || showNewRooms));
     setLoading(true);
     setRooms([]);
 
-    // Load new crawled rooms from localStorage
-    let newCrawled = [];
-    try {
-      const stored = localStorage.getItem('trohub_new_crawled_rooms');
-      if (stored) {
-        newCrawled = JSON.parse(stored);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    let newCrawled = readNewCrawledHotRooms();
+    const latestRoomsPromise = shouldScanReloadedCrawl
+      ? fetchRooms({
+          status: 'available',
+          sort_by: 'created_at',
+          sort_order: 'desc',
+          limit: 80,
+        }).then(({ rooms: latestRooms }) => latestRooms)
+      : Promise.resolve([]);
 
-    fetchFeaturedHotRooms(10)
-      .then((list) => {
+    Promise.all([fetchFeaturedHotRooms(10), latestRoomsPromise.catch(() => [])])
+      .then(([list, latestRooms]) => {
         if (!active) return;
 
-        // Merge list: prepend new crawled rooms and remove duplicates
-        const newIds = new Set(newCrawled.map((r) => r.id));
-        const filteredList = list.filter((r) => !newIds.has(r.id));
-        const merged = [...newCrawled, ...filteredList];
+        if (activeWatch && latestRooms.length > 0) {
+          const detected = collectNewCrawledHotRooms(latestRooms, activeWatch);
+          if (detected.length > 0) {
+            newCrawled = mergeNewCrawledHotRooms(newCrawled, detected, activeWatch);
+          }
+        }
 
-        if (!merged.length) {
+        if (shouldScanReloadedCrawl && !pendingHotDealsModal && newCrawled.length === 0) {
           setOpen(false);
-          dismissHotDealsModal();
-          localStorage.setItem('trohub_show_hot_deals_new_rooms', 'false');
           return;
         }
 
-        setRooms(merged);
+        const displayRooms = newCrawled.length > 0 ? newCrawled : list;
+
+        if (!displayRooms.length) {
+          setOpen(false);
+          dismissHotDealsModal();
+          localStorage.setItem(SHOW_HOT_DEALS_NEW_ROOMS_STORAGE_KEY, 'false');
+          return;
+        }
+
+        setOpen(true);
+        setRooms(displayRooms);
       })
       .catch(() => {
         if (active) {
-          // If fetch fails but we have new crawled rooms, we can still display them!
           if (newCrawled.length > 0) {
+            setOpen(true);
             setRooms(newCrawled);
           } else {
             setOpen(false);
@@ -74,12 +99,12 @@ export default function FeaturedHotRoomsGate() {
         if (active) {
           setLoading(false);
           dismissHotDealsModal();
-          localStorage.setItem('trohub_show_hot_deals_new_rooms', 'false');
+          localStorage.setItem(SHOW_HOT_DEALS_NEW_ROOMS_STORAGE_KEY, 'false');
         }
       });
 
     return () => { active = false; };
-  }, [authLoading, pendingHotDealsModal, user, dismissHotDealsModal]);
+  }, [authLoading, pendingHotDealsModal, newRoomsSignal, user, dismissHotDealsModal]);
 
   const handleClose = () => {
     setOpen(false);
